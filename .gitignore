@@ -1,0 +1,27 @@
+# Segredos e credenciais — nunca versionar
+.env
+.env.*
+!.env.example
+client_secret*.json
+credentials*.json
+token*.json
+
+# Dados locais do app (banco SQLite, cache de texto extraído, tokens OAuth)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editores e sistema
+.vscode/
+.idea/
+.DS_Store
+*.swp
+~$*
+.~lock.*
