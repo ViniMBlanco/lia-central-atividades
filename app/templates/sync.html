@@ -71,6 +71,18 @@
   </div>
 </section>
 
+{% if register_status %}
+<section class="cartao" aria-labelledby="t-registro">
+  <h2 id="t-registro">Fonte das atividades</h2>
+  <p>{% if register_status.state == "importada" %}<span class="selo selo-ok"><span class="selo-icone" aria-hidden="true">✓</span>Em vigor</span>
+     {% elif register_status.state == "aguardando" %}<span class="selo selo-neutro"><span class="selo-icone" aria-hidden="true">–</span>Aguardando</span>
+     {% else %}<span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Requer atenção</span>{% endif %}
+    {{ register_status.message }}</p>
+  <p class="discreto">Regra: a planilha apontada pelo INDEX cria as atividades uma única vez; depois disso, o app é a referência
+    oficial e nenhum arquivo muda uma atividade sem revisão humana. <a href="/atividades">Ver atividades</a></p>
+</section>
+{% endif %}
+
 <section aria-labelledby="t-arquivos">
   <h2 id="t-arquivos">Arquivos da pasta</h2>
   {% if sources %}
@@ -86,6 +98,7 @@
       <tr>
         <th scope="col">Arquivo</th>
         <th scope="col">Tipo</th>
+        <th scope="col">Papel</th>
         <th scope="col">Estado</th>
         <th scope="col">Detalhe</th>
         <th scope="col">Modificado no Drive</th>
@@ -100,6 +113,9 @@
           <div class="discreto caminho">{{ s.path }}</div>
         </td>
         <td data-rotulo="Tipo">{{ KIND_LABELS.get(s.kind, s.kind) }}</td>
+        <td data-rotulo="Papel">
+          {% if s.authority_reason %}<strong>{{ AUTHORITY_LABELS[s.authority] }}</strong><div class="discreto">{{ s.authority_reason }}</div>{% else %}—{% endif %}
+        </td>
         <td data-rotulo="Estado">{{ selo(s.sync_status) }}</td>
         <td data-rotulo="Detalhe">
           {% if s.status_reason %}{{ s.status_reason }}{% elif s.sync_status == "processed" %}Lido em {{ s.last_processed_at | dt }}{% endif %}

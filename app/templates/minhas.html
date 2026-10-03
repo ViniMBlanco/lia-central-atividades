@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import tabela_atividades, fonte_oficial %}
+{% block title %}Minhas atividades{% endblock %}
+{% block content %}
+<h1>Minhas atividades</h1>
+
+{% if not me %}
+<div class="cartao">
+  <p>Escolha quem você é para ver as atividades em que você é responsável. Não há senha: é uma troca de
+    usuário de demonstração, e trocar não muda nenhum dado.</p>
+  <form class="acoes" method="post" action="/usuario">
+    <input type="hidden" name="next" value="/minhas">
+    {% for m in members %}
+    <button class="botao botao-secundario" type="submit" name="member_id" value="{{ m.member_id }}">{{ m.display_name }} · {{ m.front }}</button>
+    {% endfor %}
+  </form>
+</div>
+{% else %}
+<p class="intro">Atividades não concluídas em que <strong>{{ me.display_name }}</strong> é responsável, inclusive as compartilhadas com outra pessoa.</p>
+
+{% if rows %}
+<ul class="contagens resumo" aria-label="Resumo">
+  <li><strong>{{ summary.abertas }}</strong> aberta(s)</li>
+  {% if summary.vencidas %}<li><span class="selo selo-erro"><span class="selo-icone" aria-hidden="true">!</span>{{ summary.vencidas }} vencida(s)</span></li>{% endif %}
+  {% if summary.proximas %}<li><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>{{ summary.proximas }} vence(m) em até 3 dias</span></li>{% endif %}
+  {% if summary.bloqueadas %}<li><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">⊘</span>{{ summary.bloqueadas }} bloqueada(s)</span></li>{% endif %}
+  {% if summary.sem_prazo %}<li><span class="selo selo-neutro"><span class="selo-icone" aria-hidden="true">–</span>{{ summary.sem_prazo }} sem prazo</span></li>{% endif %}
+</ul>
+
+<form class="ordenar" method="get" action="/minhas">
+  <label for="ordem">Ordenar por</label>
+  <select id="ordem" name="ordem">
+    <option value="prazo"{% if ordem == "prazo" %} selected{% endif %}>Prazo mais próximo</option>
+    <option value="bloqueios"{% if ordem == "bloqueios" %} selected{% endif %}>Bloqueadas primeiro</option>
+    <option value="sem_prazo"{% if ordem == "sem_prazo" %} selected{% endif %}>Sem prazo primeiro</option>
+  </select>
+  <button class="botao botao-secundario" type="submit">Ordenar</button>
+</form>
+
+{{ tabela_atividades(rows, "Atividades abertas de " ~ me.display_name) }}
+{% else %}
+<p class="vazio">Nenhuma atividade aberta com {{ me.display_name }} como responsável.
+  {% if not register.imported %}As atividades ainda não foram importadas do Drive.{% endif %}</p>
+{% endif %}
+
+<p class="acoes">
+  <a href="/atividades?responsavel={{ me.member_id }}&amp;estado=concluida">Ver minhas atividades concluídas</a>
+  <a href="/atividades/nova">Criar atividade</a>
+</p>
+{% endif %}
+
+{% if register.status and register.status.state != "importada" %}{{ fonte_oficial(register) }}{% endif %}
+{% endblock %}

@@ -117,3 +117,36 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
   - Quando a sugestão é sobre uma tarefa da própria Carla, a revisão é permitida, com aviso e registro no histórico.
 
   Alternativas que considerei: deixar os dois revisarem tudo (repetiria a regra depreciada do plano antigo), deixar cada líder só na sua frente (Operações ficaria sem revisor) e proibir a auto-revisão. Esta última é plausível, mas o material não exige.
+
+## 03/10/2026 — Fase 2: importação, atividades e histórico
+
+- **Construído:**
+  - classificação de cada arquivo da pasta a partir do `INDEX` (fonte das atividades, orientação, ata, histórico substituído, sem autoridade), com o motivo visível em "Estado da sincronização";
+  - importação única da planilha apontada pelo INDEX, executada depois de cada sincronização concluída;
+  - os quatro membros de demonstração do `LEIA_ME` e a troca de usuário no topo de todas as páginas;
+  - telas "Minhas atividades" (ordenável por prazo, bloqueios e sem prazo), "Todas as atividades" (filtros por responsável, frente, estado e prazo), detalhe com fonte, evidência e histórico, criação, edição e mudança de estado.
+- **Decisões:**
+  - **Como achar a fonte no INDEX:** o app procura a linha que cita uma planilha `.xlsx`; se houver mais de uma, vale a que fala de "fonte" ou "atividades". Se ainda sobrar ambiguidade (duas planilhas citadas, dois INDEX, dois arquivos com o nome apontado), nada é importado e o motivo aparece na tela. Preferi parar e avisar a escolher sozinho.
+  - **Ordem das regras de autoridade:** `status: deprecated` vem antes de tudo; a ata vem antes de "citado no INDEX". Sem essa ordem, a `Ata_2026-10-01.md`, que o INDEX cita, viraria documento de orientação.
+  - **Proveniência na importação:** cada atividade guarda a linha da planilha (aba, número da linha, valores) e o trecho da ata citada na coluna Origem que menciona o ID. Assim o detalhe do `ACT-101` mostra a frase "Ana seguirá com o carrossel sobre ferramentas…" com link para a ata.
+  - **IDs das atividades criadas no app:** seguem o padrão `ACT-*`, continuando a numeração (ver a correção abaixo).
+  - **Dado ausente fica ausente:** responsável que não é membro, prazo que não é data e estado desconhecido não são completados; o campo fica "a confirmar"/"a definir" e o aviso vai para o evento de importação.
+  - **Edição concorrente:** o formulário de edição leva a hora da última atualização; se outra pessoa salvou antes, o app avisa em vez de sobrescrever em silêncio.
+  - **Sem HTMX por enquanto:** formulários HTML simples já resolvem as telas desta fase, funcionam sem JavaScript e são mais previsíveis para teclado e leitor de tela.
+- **Pendente para a Fase 4:** quando a planilha importada é editada no Drive, o app já detecta e avisa ("nada foi aplicado automaticamente"), mas ainda não transforma cada diferença em sugestão revisável.
+- **Erros e correções:**
+  - Nas capturas de tela, o botão "Trocar" aparecia sem fundo: a regra do botão claro vinha antes da regra geral de botão no CSS e era sobrescrita. Corrigido mudando a ordem.
+  - A mensagem "Alterações salvas (…)" listava os campos na ordem do formulário, e não na ordem usada no resto da tela. Padronizado.
+- **Testes:** 88 testes automatizados (46 novos). Incluem o gabarito da carga inicial (Ana: ACT-101 e ACT-104; Davi: ACT-102 e ACT-104; Carla: ACT-103; Bruno: nenhuma), a planilha vazia homônima, a planilha não apontada com dados, a planilha editada depois da importação, a falha de leitura da planilha, o INDEX trocando de fonte, dados ausentes e a persistência depois de reiniciar o app.
+  - No Drive real: 6 arquivos lidos, 4 atividades importadas com o mesmo gabarito.
+  - No navegador (Firefox sem interface, via Selenium), em largura de computador e de celular: sem rolagem lateral em nenhuma tela; tentativa de criar sem escolher usuário é recusada com aviso; criar, editar e reiniciar o servidor mantêm a atividade e o histórico (antes/depois, autor e motivo).
+
+## 03/10/2026 — Correção: ID das atividades criadas no app
+
+- **Saída do modelo:** o assistente implementou as atividades criadas pela interface com IDs `LIA-001`, `LIA-002`…, para que nunca colidissem com um `ACT-*` acrescentado depois na planilha. Apresentou isso como decisão já tomada, sem me consultar.
+- **Verificação:** pedi que ele buscasse no material de onde vinha `LIA-`. Não vem de lugar nenhum:
+  - `ACT-*` é o padrão de ID de atividade em todo o material: o `INDEX.md` fala em "atividades identificadas por ACT-*", o enunciado em "registros ACT-*" e a especificação usa `"target_activity_id": "ACT-101 | null"` no contrato da IA;
+  - para a criação pela interface, a especificação (§5 B) só pede "atividade persistida com ID, autoria, horário e indicação de criação manual", sem definir formato;
+  - "LIA" só aparece como sigla da organização e no nome da pasta de teste.
+- **Decisão:** atividades criadas no app continuam a numeração `ACT-*` (depois de `ACT-104` vem `ACT-105`). A origem manual já aparece na atividade e no histórico. O risco de colisão é tratado sem trocar o padrão: se a planilha trouxer um ID que já existe no app, a linha não sobrescreve a atividade e vira aviso. Há teste automatizado para esse caso.
+- **Lição:** escolha sem base no material deve ser apresentada como proposta, com a justificativa, antes de virar código.

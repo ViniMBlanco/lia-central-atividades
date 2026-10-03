@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import tabela_atividades, fonte_oficial %}
+{% block title %}Todas as atividades{% endblock %}
+{% block content %}
+<div class="titulo-com-acao">
+  <h1>Todas as atividades</h1>
+  <a class="botao" href="/atividades/nova">Nova atividade</a>
+</div>
+
+<form class="filtros cartao" method="get" action="/atividades" aria-label="Filtros">
+  <div class="campo">
+    <label for="f-responsavel">Responsável</label>
+    <select id="f-responsavel" name="responsavel">
+      <option value="">Todos</option>
+      {% for m in members %}
+      <option value="{{ m.member_id }}"{% if filters.responsavel == m.member_id %} selected{% endif %}>{{ m.display_name }}{% if me and me.member_id == m.member_id %} (você){% endif %}</option>
+      {% endfor %}
+      <option value="nenhum"{% if filters.responsavel == "nenhum" %} selected{% endif %}>Sem responsável (a confirmar)</option>
+    </select>
+  </div>
+  <div class="campo">
+    <label for="f-frente">Frente</label>
+    <select id="f-frente" name="frente">
+      <option value="">Todas</option>
+      {% for f in fronts %}<option value="{{ f }}"{% if filters.frente == f %} selected{% endif %}>{{ f }}</option>{% endfor %}
+      <option value="nenhuma"{% if filters.frente == "nenhuma" %} selected{% endif %}>Sem frente (a confirmar)</option>
+    </select>
+  </div>
+  <div class="campo">
+    <label for="f-estado">Estado</label>
+    <select id="f-estado" name="estado">
+      <option value="">Todos</option>
+      <option value="abertas"{% if filters.estado == "abertas" %} selected{% endif %}>Não concluídas</option>
+      {% for k, v in STATUSES.items() %}<option value="{{ k }}"{% if filters.estado == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="f-prazo">Prazo</label>
+    <select id="f-prazo" name="prazo">
+      <option value="">Qualquer prazo</option>
+      {% for k, v in DUE_FILTERS.items() %}<option value="{{ k }}"{% if filters.prazo == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label for="f-ordem">Ordenar por</label>
+    <select id="f-ordem" name="ordem">
+      <option value="prazo"{% if filters.ordem == "prazo" %} selected{% endif %}>Prazo mais próximo</option>
+      <option value="bloqueios"{% if filters.ordem == "bloqueios" %} selected{% endif %}>Bloqueadas primeiro</option>
+      <option value="sem_prazo"{% if filters.ordem == "sem_prazo" %} selected{% endif %}>Sem prazo primeiro</option>
+    </select>
+  </div>
+  <div class="acoes acoes-filtro">
+    <button class="botao" type="submit">Filtrar</button>
+    {% if active_filters %}<a class="botao botao-secundario" href="/atividades">Limpar filtros</a>{% endif %}
+  </div>
+</form>
+
+<p class="contador" role="status">
+  {% if active_filters %}{{ rows | length }} de {{ total }} atividade(s) com os filtros escolhidos.{% else %}{{ total }} atividade(s).{% endif %}
+</p>
+
+{% if rows %}
+{{ tabela_atividades(rows, "Lista de atividades") }}
+{% elif total %}
+<p class="vazio">Nenhuma atividade com esses filtros. <a href="/atividades">Limpar filtros</a></p>
+{% endif %}
+
+{{ fonte_oficial(register) }}
+{% endblock %}

@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS sources (
     status_reason     TEXT,                 -- motivo legível de falha, de ser ignorado ou de estar indisponível
     authority         TEXT NOT NULL DEFAULT 'none'
                       CHECK (authority IN ('activity_register', 'direction', 'minutes', 'deprecated', 'none')),
-    doc_title         TEXT,                 -- título (H1 ou primeira linha)
+    authority_reason  TEXT,                 -- por que o arquivo tem essa autoridade (recalculado a cada sync)
+    doc_title        TEXT,                 -- título (H1 ou primeira linha)
     doc_meta          TEXT,                 -- JSON com o cabeçalho "chave: valor" (status, atualizado_em...)
     first_seen_at     TEXT NOT NULL,
     last_seen_at      TEXT NOT NULL,        -- última vez que apareceu numa varredura completa
@@ -60,6 +61,15 @@ CREATE TABLE IF NOT EXISTS members (
     review_scope TEXT NOT NULL DEFAULT 'none' CHECK (review_scope IN ('all', 'front', 'none'))
 );
 
+-- Pessoas de demonstração (LEIA_ME_PRIMEIRO.md do pacote de teste).
+-- Revisão: Bruno em qualquer frente; Carla só na Formação ("revisa propostas de atividades
+-- da sua frente", GUIA_INICIAL.md); Ana e Davi não revisam.
+INSERT OR IGNORE INTO members (member_id, display_name, front, role, review_scope) VALUES
+    ('U-A', 'Ana',   'Growth',    'Membro, responsável por tarefas',            'none'),
+    ('U-B', 'Bruno', 'Growth',    'Líder de Growth, pode revisar sugestões',    'all'),
+    ('U-C', 'Carla', 'Formação',  'Membro e revisora de sugestões da Formação', 'front'),
+    ('U-D', 'Davi',  'Operações', 'Membro, responsável por tarefas',            'none');
+
 -- ---------------------------------------------------------------------------
 -- Atividades: depois da importação, o banco é a fonte oficial.
 -- ---------------------------------------------------------------------------
@@ -77,6 +87,27 @@ CREATE TABLE IF NOT EXISTS activities (
     created_by  TEXT NOT NULL,              -- member_id ou 'sistema:importacao'
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
+);
+
+-- Importação única da planilha apontada pelo INDEX. Depois dela, o banco é a fonte oficial;
+-- edições posteriores da planilha não sobrescrevem nada (viram sugestões para revisão).
+CREATE TABLE IF NOT EXISTS register_import (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    file_id      TEXT NOT NULL REFERENCES sources(file_id),
+    file_name    TEXT NOT NULL,
+    sheet_name   TEXT NOT NULL,
+    content_hash TEXT NOT NULL,             -- versão da planilha que foi importada
+    imported_at  TEXT NOT NULL,
+    n_imported   INTEGER NOT NULL,
+    warnings     TEXT NOT NULL DEFAULT '[]' -- JSON: linhas não importadas e outros avisos
+);
+
+-- Situação da fonte das atividades, recalculada a cada sincronização concluída.
+CREATE TABLE IF NOT EXISTS register_status (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    state      TEXT NOT NULL CHECK (state IN ('importada', 'aguardando', 'alterada', 'atencao')),
+    message    TEXT NOT NULL,
+    checked_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS activity_owners (

@@ -1,0 +1,94 @@
+{# Componentes reaproveitados nas telas de atividades. Estado nunca só por cor: ícone + texto. #}
+
+{% macro selo_estado(status) -%}
+  {%- set icone = {"a_fazer": "○", "em_andamento": "◔", "bloqueada": "⊘", "concluida": "✓"}[status] -%}
+  {%- set tom = {"a_fazer": "neutro", "em_andamento": "info", "bloqueada": "alerta", "concluida": "ok"}[status] -%}
+  <span class="selo selo-{{ tom }}"><span class="selo-icone" aria-hidden="true">{{ icone }}</span>{{ STATUSES[status] }}</span>
+{%- endmacro %}
+
+{% macro prazo(a) -%}
+  {%- set d = due(a) -%}
+  {%- if not a.due_date -%}
+    <span class="a-confirmar">A definir</span>
+  {%- else -%}
+    <span class="prazo-data">{{ d.label }}</span>
+    {%- if d.relative %}
+      {% if d.tone in ("erro", "alerta") -%}
+        <span class="selo selo-{{ d.tone }}"><span class="selo-icone" aria-hidden="true">!</span>{{ d.relative }}</span>
+      {%- else -%}
+        <span class="discreto">({{ d.relative }})</span>
+      {%- endif %}
+    {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro responsaveis(a) -%}
+  {%- if a.owners -%}
+    {{ a.owners | map(attribute="display_name") | join(", ") }}
+  {%- else -%}
+    <span class="a-confirmar">Responsável a confirmar</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro tabela_atividades(rows, legenda, mostrar_responsaveis=true) %}
+<table class="tabela tabela-responsiva tabela-atividades">
+  <caption class="sr">{{ legenda }}</caption>
+  <thead>
+    <tr>
+      <th scope="col">Atividade</th>
+      {% if mostrar_responsaveis %}<th scope="col">Responsáveis</th>{% endif %}
+      <th scope="col">Prazo</th>
+      <th scope="col">Estado</th>
+      <th scope="col">Frente</th>
+      <th scope="col">Próximo passo</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in rows %}
+    <tr>
+      <td data-rotulo="Atividade">
+        <a class="titulo-atividade" href="/atividades/{{ a.activity_id }}">{{ a.title }}</a>
+        <div class="discreto"><code>{{ a.activity_id }}</code></div>
+        {% if a.pending %}
+        <div><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">?</span>Mudança proposta aguardando revisão</span></div>
+        {% endif %}
+      </td>
+      {% if mostrar_responsaveis %}<td data-rotulo="Responsáveis">{{ responsaveis(a) }}</td>{% endif %}
+      <td data-rotulo="Prazo">{{ prazo(a) }}</td>
+      <td data-rotulo="Estado">{{ selo_estado(a.status) }}</td>
+      <td data-rotulo="Frente">{% if a.front %}{{ a.front }}{% else %}<span class="a-confirmar">A confirmar</span>{% endif %}</td>
+      <td data-rotulo="Próximo passo">{% if a.next_step %}{{ a.next_step }}{% else %}<span class="a-confirmar">Não registrado</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro fonte_oficial(register) %}
+{% set imp = register.imported %}
+{% set st = register.status %}
+<section class="cartao fonte-oficial" aria-labelledby="t-fonte">
+  <h2 id="t-fonte">De onde vêm estas atividades</h2>
+  {% if imp %}
+  <p>As atividades <code>ACT-*</code> foram importadas de
+    {% if imp.web_url %}<a href="{{ imp.web_url }}" target="_blank" rel="noopener">{{ imp.file_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ imp.file_name }}{% endif %}
+    (aba {{ imp.sheet_name }}) em {{ imp.imported_at | dt }}, versão <code title="Hash do conteúdo importado">{{ imp.content_hash[:8] }}</code>,
+    porque o <code>INDEX.md</code> aponta essa planilha como fonte inicial.</p>
+  <p class="discreto">Desde a importação, a referência oficial é este app: mudanças entram pela interface, com autor no histórico,
+    ou por sugestões aprovadas por uma pessoa. Editar a planilha no Drive não altera nada sozinho.</p>
+  {% if register.warnings %}
+  <details>
+    <summary>Linhas da planilha não importadas ({{ register.warnings | length }})</summary>
+    <ul>{% for w in register.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  {% endif %}
+  {% if st and st.state != "importada" %}
+  <div class="aviso aviso-alerta" role="status"><strong>Atenção:</strong> {{ st.message }}
+    <span class="discreto">(verificado em {{ st.checked_at | dt }})</span></div>
+  {% elif not imp %}
+  <p class="vazio">Ainda não há atividades importadas: nenhuma sincronização com o Drive foi concluída.
+    Veja o <a href="/sincronizacao">Estado da sincronização</a>.</p>
+  {% endif %}
+</section>
+{% endmacro %}

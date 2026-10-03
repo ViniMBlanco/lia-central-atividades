@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+import sqlite3
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
@@ -16,7 +19,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import db, google_auth, sync
+from . import activities, db, google_auth, sync
+from .activities import DUE_FILTERS, FIELD_LABELS, ORDERS, PRIORITIES, STATUSES, StaleEdit
+from .authority import AUTHORITY_LABELS
 from .config import Settings, settings
 
 log = logging.getLogger(__name__)
@@ -59,6 +64,31 @@ def fmt_dt(value: str | None) -> str:
     return dt.astimezone(settings.timezone).strftime("%d/%m/%Y %H:%M") if dt else "—"
 
 
+def fmt_date(value: str | None) -> str:
+    """AAAA-MM-DD → DD/MM/AAAA (prazos não têm hora nem fuso)."""
+    try:
+        return date.fromisoformat(value).strftime("%d/%m/%Y") if value else ""
+    except ValueError:
+        return value or ""
+
+
+def today() -> date:
+    return datetime.now(settings.timezone).date()
+
+
+def fmt_field(value: Any, field: str, names: dict[str, str]) -> str:
+    """Valor de um campo de atividade como aparece na tela e no histórico."""
+    if value in (None, "", []):
+        return {"owners": "a confirmar", "due_date": "a definir", "front": "a confirmar"}.get(field, "—")
+    if field == "status":
+        return STATUSES.get(value, value)
+    if field == "due_date":
+        return fmt_date(value)
+    if field == "owners":
+        return ", ".join(names.get(m, m) for m in value)
+    return str(value)
+
+
 def fmt_ago(value: str | None) -> str:
     dt = _parse(value)
     if not dt:
@@ -76,8 +106,19 @@ def fmt_ago(value: str | None) -> str:
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.filters["dt"] = fmt_dt
 templates.env.filters["ago"] = fmt_ago
-templates.env.globals["KIND_LABELS"] = KIND_LABELS
-templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
+templates.env.filters["data"] = fmt_date
+templates.env.filters["campo"] = fmt_field
+templates.env.globals.update(
+    KIND_LABELS=KIND_LABELS,
+    STATUS_LABELS=STATUS_LABELS,
+    STATUSES=STATUSES,
+    FIELD_LABELS=FIELD_LABELS,
+    PRIORITIES=PRIORITIES,
+    DUE_FILTERS=DUE_FILTERS,
+    AUTHORITY_LABELS=AUTHORITY_LABELS,
+    IMPORT_ACTOR=activities.IMPORT_ACTOR,
+    due=lambda a: activities.due_info(a["due_date"], a["status"], today()),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -126,11 +167,39 @@ def _flash(request: Request, message: str, kind: str = "info") -> None:
     request.session.setdefault("flash", []).append({"message": message, "kind": kind})
 
 
-def render(request: Request, template: str, active: str, **ctx) -> HTMLResponse:
+def _me(request: Request, conn: sqlite3.Connection) -> sqlite3.Row | None:
+    """Usuário de demonstração escolhido nesta sessão (não é login: ver README)."""
+    member_id = request.session.get("member_id")
+    if not member_id:
+        return None
+    return conn.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
+
+
+def render(request: Request, template: str, active: str, status_code: int = 200, **ctx) -> HTMLResponse:
     flashes = request.session.pop("flash", [])
+    with db.session(settings.database_path) as conn:
+        members = conn.execute("SELECT * FROM members ORDER BY display_name").fetchall()
+    me = next((m for m in members if m["member_id"] == request.session.get("member_id")), None)
     return templates.TemplateResponse(
-        request, template, {"active": active, "flashes": flashes, **ctx}
+        request,
+        template,
+        {
+            "active": active,
+            "flashes": flashes,
+            "members": members,
+            "member_names": {m["member_id"]: m["display_name"] for m in members},
+            "me": me,
+            **ctx,
+        },
+        status_code=status_code,
     )
+
+
+def _local_path(target: str | None) -> str:
+    """Só redireciona para caminhos deste app (evita redirecionamento aberto)."""
+    if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return "/"
+    return target
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +208,6 @@ def render(request: Request, template: str, active: str, **ctx) -> HTMLResponse:
 
 PLACEHOLDERS = {
     "/": ("comece", "Comece aqui"),
-    "/minhas": ("minhas", "Minhas atividades"),
-    "/atividades": ("todas", "Todas as atividades"),
     "/sugestoes": ("sugestoes", "Sugestões para revisar"),
     "/novidades": ("novidades", "Novidades dos documentos"),
 }
@@ -159,6 +226,211 @@ for _path in PLACEHOLDERS:
     app.add_api_route(_path, _placeholder(_path), methods=["GET"], response_class=HTMLResponse)
 
 
+# ---------------------------------------------------------------------------
+# Usuário de demonstração
+# ---------------------------------------------------------------------------
+
+
+@app.post("/usuario")
+async def switch_user(request: Request):
+    form = await request.form()
+    member_id = str(form.get("member_id") or "")
+    with db.session(settings.database_path) as conn:
+        member = conn.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
+    if member:
+        request.session["member_id"] = member["member_id"]
+        _flash(request, f"Agora você está vendo o app como {member['display_name']} ({member['front']}).", "ok")
+    else:
+        request.session.pop("member_id", None)
+    return RedirectResponse(_local_path(str(form.get("next") or "")), status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Atividades
+# ---------------------------------------------------------------------------
+
+
+def _register_info(conn: sqlite3.Connection) -> dict[str, Any]:
+    """De onde vieram as atividades e se a fonte mudou depois (aparece nas listas)."""
+    imported = conn.execute(
+        """SELECT r.*, s.web_url, s.sync_status FROM register_import r
+           LEFT JOIN sources s ON s.file_id = r.file_id WHERE r.id = 1"""
+    ).fetchone()
+    status = conn.execute("SELECT * FROM register_status WHERE id = 1").fetchone()
+    warnings = json.loads(imported["warnings"]) if imported else []
+    return {"imported": imported, "status": status, "warnings": warnings}
+
+
+def _summary(rows: list[dict[str, Any]]) -> dict[str, int]:
+    infos = [activities.due_info(r["due_date"], r["status"], today()) for r in rows]
+    return {
+        "abertas": len(rows),
+        "vencidas": sum(1 for i in infos if i["tone"] == "erro"),
+        "proximas": sum(1 for i in infos if i["tone"] == "alerta"),
+        "bloqueadas": sum(1 for r in rows if r["status"] == "bloqueada"),
+        "sem_prazo": sum(1 for r in rows if not r["due_date"]),
+    }
+
+
+@app.get("/minhas", response_class=HTMLResponse)
+async def my_activities(request: Request, ordem: str = "prazo"):
+    ordem = ordem if ordem in ORDERS else "prazo"
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        rows = (
+            activities.list_activities(conn, today(), owner=me["member_id"], status="abertas", order=ordem)
+            if me else []
+        )
+        register = _register_info(conn)
+    return render(request, "minhas.html", "minhas", title="Minhas atividades", rows=rows, ordem=ordem,
+                  summary=_summary(rows), register=register)
+
+
+@app.get("/atividades", response_class=HTMLResponse)
+async def all_activities(request: Request, responsavel: str = "", frente: str = "", estado: str = "",
+                         prazo: str = "", ordem: str = "prazo"):
+    with db.session(settings.database_path) as conn:
+        member_ids = {r[0] for r in conn.execute("SELECT member_id FROM members")}
+        fronts = activities.known_fronts(conn)
+        filters = {
+            "responsavel": responsavel if responsavel in member_ids | {"nenhum"} else "",
+            "frente": frente if frente in set(fronts) | {"nenhuma"} else "",
+            "estado": estado if estado in set(STATUSES) | {"abertas"} else "",
+            "prazo": prazo if prazo in DUE_FILTERS else "",
+            "ordem": ordem if ordem in ORDERS else "prazo",
+        }
+        rows = activities.list_activities(
+            conn, today(), owner=filters["responsavel"] or None, front=filters["frente"] or None,
+            status=filters["estado"] or None, due=filters["prazo"] or None, order=filters["ordem"],
+        )
+        total = conn.execute("SELECT COUNT(*) FROM activities").fetchone()[0]
+        register = _register_info(conn)
+    active_filters = any(filters[k] for k in ("responsavel", "frente", "estado", "prazo"))
+    return render(request, "atividades.html", "todas", title="Todas as atividades", rows=rows, total=total,
+                  filters=filters, active_filters=active_filters, fronts=fronts, register=register)
+
+
+def _form_context(conn: sqlite3.Connection, values: dict[str, Any], errors: dict[str, str], **extra) -> dict:
+    return {"values": values, "errors": errors, "fronts": activities.known_fronts(conn), **extra}
+
+
+EMPTY_FORM = {"title": "", "owners": [], "front": "", "status": "a_fazer", "due_date": "", "next_step": "",
+              "priority": "", "description": "", "notes": ""}
+
+
+@app.get("/atividades/nova", response_class=HTMLResponse)
+async def new_activity_form(request: Request):
+    with db.session(settings.database_path) as conn:
+        ctx = _form_context(conn, dict(EMPTY_FORM), {})
+    return render(request, "atividade_form.html", "todas", title="Nova atividade", mode="criar", **ctx)
+
+
+@app.post("/atividades/nova", response_class=HTMLResponse)
+async def create_activity(request: Request):
+    form = await request.form()
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        member_ids = {r[0] for r in conn.execute("SELECT member_id FROM members")}
+        parsed = activities.parse_form(form, member_ids)
+        errors = dict(parsed.errors)
+        if me is None:
+            errors["usuario"] = "Escolha no topo da página quem você é antes de criar uma atividade."
+        if errors:
+            ctx = _form_context(conn, parsed.data | {"reason": parsed.reason}, errors)
+        else:
+            activity_id = activities.create(conn, parsed.data, me["member_id"], reason=parsed.reason)
+    if errors:
+        return render(request, "atividade_form.html", "todas", status_code=422, title="Nova atividade", mode="criar", **ctx)
+    _flash(request, f"Atividade {activity_id} criada por {me['display_name']}.", "ok")
+    return RedirectResponse(f"/atividades/{activity_id}", status_code=303)
+
+
+def _not_found(request: Request, activity_id: str) -> HTMLResponse:
+    return render(request, "nao_encontrada.html", "todas", status_code=404, title="Atividade não encontrada",
+                  activity_id=activity_id)
+
+
+@app.get("/atividades/{activity_id}", response_class=HTMLResponse)
+async def activity_detail(request: Request, activity_id: str):
+    with db.session(settings.database_path) as conn:
+        a = activities.get(conn, activity_id)
+        if a is None:
+            return _not_found(request, activity_id)
+        events = activities.history(conn, activity_id)
+        refs = activities.references(conn, activity_id)
+        creator = conn.execute("SELECT display_name FROM members WHERE member_id = ?", (a["created_by"],)).fetchone()
+    return render(request, "atividade.html", "todas", title=a["title"], a=a, events=events, refs=refs,
+                  creator=creator["display_name"] if creator else None)
+
+
+@app.get("/atividades/{activity_id}/editar", response_class=HTMLResponse)
+async def edit_activity_form(request: Request, activity_id: str):
+    with db.session(settings.database_path) as conn:
+        a = activities.get(conn, activity_id)
+        if a is None:
+            return _not_found(request, activity_id)
+        values = activities.snapshot(conn, activity_id)
+        ctx = _form_context(conn, values, {}, a=a, updated_at=a["updated_at"])
+    return render(request, "atividade_form.html", "todas", title=f"Editar {activity_id}", mode="editar", **ctx)
+
+
+@app.post("/atividades/{activity_id}/editar", response_class=HTMLResponse)
+async def edit_activity(request: Request, activity_id: str):
+    form = await request.form()
+    with db.session(settings.database_path) as conn:
+        a = activities.get(conn, activity_id)
+        if a is None:
+            return _not_found(request, activity_id)
+        me = _me(request, conn)
+        member_ids = {r[0] for r in conn.execute("SELECT member_id FROM members")}
+        parsed = activities.parse_form(form, member_ids)
+        errors = dict(parsed.errors)
+        if me is None:
+            errors["usuario"] = "Escolha no topo da página quem você é antes de editar."
+        diff = None
+        if not errors:
+            try:
+                diff = activities.update(conn, activity_id, parsed.data, me["member_id"],
+                                         expected_updated_at=str(form.get("updated_at") or ""), reason=parsed.reason)
+            except StaleEdit:
+                errors["stale"] = (
+                    "Esta atividade foi alterada por outra pessoa depois que você abriu o formulário. "
+                    "Abra a atividade em outra aba para ver os valores atuais; se salvar de novo, os seus valores prevalecem."
+                )
+                a = activities.get(conn, activity_id)
+        if errors:
+            ctx = _form_context(conn, parsed.data | {"reason": parsed.reason}, errors, a=a, updated_at=a["updated_at"])
+    if errors:
+        return render(request, "atividade_form.html", "todas", status_code=422, title=f"Editar {activity_id}",
+                      mode="editar", **ctx)
+    if diff:
+        changed = ", ".join(FIELD_LABELS[f].lower() for f in diff)
+        _flash(request, f"Alterações salvas ({changed}) e registradas no histórico.", "ok")
+    else:
+        _flash(request, "Nenhum campo foi alterado; nada foi registrado.", "info")
+    return RedirectResponse(f"/atividades/{activity_id}", status_code=303)
+
+
+@app.post("/atividades/{activity_id}/estado")
+async def change_status(request: Request, activity_id: str):
+    form = await request.form()
+    new_status = str(form.get("status") or "")
+    reason = " ".join(str(form.get("reason") or "").split())[:300] or None
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        if activities.get(conn, activity_id) is None:
+            return _not_found(request, activity_id)
+        if me is None:
+            _flash(request, "Escolha no topo da página quem você é antes de mudar o estado.", "erro")
+        elif new_status not in STATUSES:
+            _flash(request, "Estado inválido.", "erro")
+        elif activities.update(conn, activity_id, {"status": new_status}, me["member_id"], reason=reason):
+            _flash(request, f"Estado alterado para “{STATUSES[new_status]}” e registrado no histórico.", "ok")
+        else:
+            _flash(request, f"A atividade já estava “{STATUSES[new_status]}”.", "info")
+    return RedirectResponse(f"/atividades/{activity_id}", status_code=303)
+
+
 @app.get("/sincronizacao", response_class=HTMLResponse)
 async def sync_status(request: Request):
     with db.session(settings.database_path) as conn:
@@ -169,6 +441,7 @@ async def sync_status(request: Request):
                         WHEN 'processed' THEN 2 ELSE 3 END, path COLLATE NOCASE"""
         ).fetchall()
         runs = conn.execute("SELECT * FROM sync_runs ORDER BY run_id DESC LIMIT 10").fetchall()
+        register_status = conn.execute("SELECT * FROM register_status WHERE id = 1").fetchone()
     counts = {k: 0 for k in STATUS_LABELS}
     for s in sources:
         counts[s["sync_status"]] = counts.get(s["sync_status"], 0) + 1
@@ -186,6 +459,7 @@ async def sync_status(request: Request):
         state=state,
         sources=sources,
         runs=runs,
+        register_status=register_status,
         counts=counts,
         stale=stale,
         running=sync.is_running(),

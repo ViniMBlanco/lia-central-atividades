@@ -9,6 +9,8 @@ Cada execução faz uma varredura completa e recursiva da pasta monitorada:
   removido: falha de leitura nunca vira "não há atividades".
 
 Execuções nunca se sobrepõem: o botão manual e o ciclo automático usam a mesma trava.
+Depois de uma varredura concluída, `importer.after_sync` recalcula a autoridade das
+fontes e faz a importação única da planilha de atividades.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from . import db
+from . import db, importer
 from .config import Settings
 from .drive import FOLDER_MIME, GDOC_MIME, GSHEET_MIME, XLSX_MIME, DriveClient, DriveClientProtocol, DriveError
 from .google_auth import NotConnected, load_credentials
@@ -58,11 +60,32 @@ def run_sync(settings: Settings, trigger: str, client_factory: ClientFactory | N
         factory = client_factory or default_client_factory(settings)
         conn = db.connect(settings.database_path)
         try:
-            return _Sync(conn, settings, trigger, factory).run()
+            result = _Sync(conn, settings, trigger, factory).run()
+            if result.ok:
+                _interpret(conn, settings)
+            return result
         finally:
             conn.close()
     finally:
         _lock.release()
+
+
+def _interpret(conn: sqlite3.Connection, settings: Settings) -> None:
+    """Autoridade das fontes e importação, numa transação só (tudo ou nada)."""
+    try:
+        importer.after_sync(conn, settings.drive_folder_id)
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001 — a leitura do Drive já foi gravada; não perder isso
+        conn.rollback()
+        log.exception("Falha ao interpretar as fontes")
+        conn.execute(
+            """INSERT INTO register_status (id, state, message, checked_at) VALUES (1, 'atencao', ?, ?)
+               ON CONFLICT(id) DO UPDATE SET state = excluded.state, message = excluded.message,
+                   checked_at = excluded.checked_at""",
+            (f"Falha inesperada ao interpretar as fontes ({exc.__class__.__name__}). "
+             "As atividades não foram alteradas; nova tentativa na próxima sincronização.", db.utcnow()),
+        )
+        conn.commit()
 
 
 class _Sync:

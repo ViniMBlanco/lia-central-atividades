@@ -26,7 +26,22 @@ Aplicação web local que lê uma pasta do Google Drive e ajuda cada membro da L
 
 ## 2. Fonte oficial das atividades
 
-*A preencher.*
+**Regra única: a planilha apontada pelo `INDEX` cria as atividades uma vez; depois disso, a referência oficial é o banco do app, e nenhum documento muda uma atividade sem uma pessoa aprovar.**
+
+1. **Quem manda é o `INDEX`.** O app procura na pasta o arquivo de texto chamado `INDEX` (`INDEX.md` ou Google Doc `INDEX`) e lê nele qual planilha e qual aba são a fonte das atividades. No pacote de teste: `` `Ata_registro.xlsx`, aba `Atividades`: fonte inicial e provisória das atividades identificadas por ACT-* ``.
+2. **Importação única.** Na primeira sincronização em que essa planilha é lida, cada linha vira uma atividade, com:
+   - evento "importada" no histórico (data, arquivo, aba, linha e versão do conteúdo);
+   - vínculo com a linha da planilha e com o documento citado na coluna **Origem** (ex.: o trecho da `Ata_2026-10-01.md` que menciona o `ACT-101`);
+   - "Ana; Davi" vira dois responsáveis da **mesma** atividade; "Bloqueada" continua bloqueada.
+3. **Depois da importação, o app é a referência.** Mudanças entram pela interface (com autor, hora e campos antes/depois no histórico) ou por sugestões aprovadas por um revisor.
+4. **Editar a planilha no Drive não sobrescreve nada.** O app detecta a nova versão e avisa que ela diverge; as diferenças são tratadas como sugestão para revisão humana. Linha apagada na planilha não apaga atividade.
+5. **Planilha que o `INDEX` não aponta nunca importa nem apaga.** É o caso de `Ata - copia vazia.xlsx`: aparece como "sem autoridade" na tela de sincronização, e as atividades continuam intactas. A data do arquivo não importa: "mais recente" não significa "mais confiável".
+6. **Ambiguidade não é resolvida por palpite.** Dois `INDEX`, duas planilhas com o nome apontado, `INDEX` citando duas planilhas ou passando a apontar outra depois da importação: nada é importado nem trocado, e o motivo aparece em "Todas as atividades" e em "Estado da sincronização".
+7. **Dado ausente fica ausente.** Responsável que não é membro, prazo que não é data ("até sexta") ou estado desconhecido não são completados: o campo fica "a confirmar"/"a definir" e o aviso fica registrado no evento de importação.
+
+Atividades criadas no app seguem o mesmo padrão `ACT-*` do material, continuando a numeração (depois de `ACT-104` vem `ACT-105`); a origem "criada manualmente por…" aparece na atividade e no histórico. Se a planilha trouxer depois um ID que já existe no app, a linha não sobrescreve a atividade: é registrada como aviso.
+
+Por que não deixar a planilha como fonte oficial: o app só tem permissão de leitura no Drive (escrever lá está fora do escopo), então haveria duas verdades — a planilha e o que foi aprovado no app. Alternativas consideradas estão no [diário de bordo](docs/DIARIO_DE_BORDO.md) (03/10).
 
 ## 3. Credenciais do Google e pasta do Drive
 

@@ -14,6 +14,17 @@
         <span class="marca-sigla" aria-hidden="true">LIA</span>
         <span class="marca-nome">Central de contexto e atividades</span>
       </a>
+      <form class="troca-usuario" method="post" action="/usuario">
+        <label for="usuario">Usuário de demonstração</label>
+        <select id="usuario" name="member_id">
+          <option value=""{% if not me %} selected{% endif %}>Escolha quem você é</option>
+          {% for m in members %}
+          <option value="{{ m.member_id }}"{% if me and me.member_id == m.member_id %} selected{% endif %}>{{ m.display_name }} · {{ m.front }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        <button class="botao botao-claro" type="submit">Trocar</button>
+      </form>
     </div>
     <nav class="menu" aria-label="Principal">
       <ul>

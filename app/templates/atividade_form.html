@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% macro erro(campo) -%}
+  {%- if errors.get(campo) %}<p class="erro-campo" id="erro-{{ campo }}"><span aria-hidden="true">✕ </span>{{ errors[campo] }}</p>{% endif -%}
+{%- endmacro %}
+{% macro invalido(campo, dica=None) -%}
+  {%- if errors.get(campo) %} aria-invalid="true" aria-describedby="erro-{{ campo }}{% if dica %} {{ dica }}{% endif %}"{% elif dica %} aria-describedby="{{ dica }}"{% endif -%}
+{%- endmacro %}
+{% block content %}
+{% if mode == "editar" %}
+<nav class="trilha" aria-label="Você está em">
+  <a href="/atividades">Todas as atividades</a> <span aria-hidden="true">›</span>
+  <a href="/atividades/{{ a.activity_id }}">{{ a.activity_id }}</a> <span aria-hidden="true">›</span> <span aria-current="page">Editar</span>
+</nav>
+<h1>Editar {{ a.activity_id }}</h1>
+{% else %}
+<h1>Nova atividade</h1>
+<p class="intro">A atividade é criada já como oficial, com o seu nome no histórico e a origem “criação manual”.
+  Campos sem informação ficam “a confirmar” ou “a definir”: nada é preenchido automaticamente.</p>
+{% endif %}
+
+{% if errors %}
+<div class="aviso aviso-erro" role="alert" tabindex="-1" id="resumo-erros">
+  <strong>Não foi possível salvar:</strong>
+  <ul>
+    {% for campo, msg in errors.items() %}
+    <li>{% if campo in ("usuario", "stale") %}{{ msg }}{% else %}<a href="#campo-{{ campo }}">{{ msg }}</a>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not me %}
+<div class="aviso aviso-alerta" role="status">Escolha no topo da página quem você é: {% if mode == "editar" %}a alteração{% else %}a criação{% endif %} fica registrada com o seu nome.</div>
+{% endif %}
+
+<form class="formulario cartao" method="post" novalidate
+      action="{% if mode == 'editar' %}/atividades/{{ a.activity_id }}/editar{% else %}/atividades/nova{% endif %}">
+  {% if mode == "editar" %}<input type="hidden" name="updated_at" value="{{ updated_at }}">{% endif %}
+
+  <div class="campo campo-largo">
+    <label for="campo-title">Título <span class="obrigatorio">(obrigatório)</span></label>
+    <input id="campo-title" name="title" type="text" maxlength="200" required value="{{ values.title or '' }}"{{ invalido("title") }}>
+    {{ erro("title") }}
+  </div>
+
+  <fieldset class="campo campo-largo"{% if errors.get("owners") %} aria-describedby="erro-owners"{% endif %} id="campo-owners">
+    <legend>Responsáveis</legend>
+    <p class="dica" id="dica-owners">Pode marcar mais de uma pessoa. Sem ninguém marcado, aparece “responsável a confirmar”.</p>
+    <div class="opcoes">
+      {% for m in members %}
+      <label class="opcao"><input type="checkbox" name="owners" value="{{ m.member_id }}"{% if m.member_id in (values.owners or []) %} checked{% endif %}> {{ m.display_name }} <span class="discreto">· {{ m.front }}</span></label>
+      {% endfor %}
+    </div>
+    {{ erro("owners") }}
+  </fieldset>
+
+  <div class="grade-campos">
+    <div class="campo">
+      <label for="campo-due_date">Prazo</label>
+      <input id="campo-due_date" name="due_date" type="date" value="{{ values.due_date or '' }}"{{ invalido("due_date", "dica-due_date") }}>
+      <p class="dica" id="dica-due_date">Em branco = “a definir”. Só preencha se o prazo foi combinado.</p>
+      {{ erro("due_date") }}
+    </div>
+    <div class="campo">
+      <label for="campo-status">Estado</label>
+      <select id="campo-status" name="status"{{ invalido("status") }}>
+        {% for k, v in STATUSES.items() %}<option value="{{ k }}"{% if values.status == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+      {{ erro("status") }}
+    </div>
+    <div class="campo">
+      <label for="campo-front">Frente</label>
+      <select id="campo-front" name="front">
+        <option value="">A confirmar</option>
+        {% for f in fronts %}<option value="{{ f }}"{% if values.front == f %} selected{% endif %}>{{ f }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="campo-priority">Prioridade</label>
+      <select id="campo-priority" name="priority"{{ invalido("priority") }}>
+        <option value="">Não definida</option>
+        {% for p in PRIORITIES %}<option value="{{ p }}"{% if values.priority == p %} selected{% endif %}>{{ p }}</option>{% endfor %}
+        {% if values.priority and values.priority not in PRIORITIES %}<option value="{{ values.priority }}" selected>{{ values.priority }}</option>{% endif %}
+      </select>
+      {{ erro("priority") }}
+    </div>
+  </div>
+
+  <div class="campo campo-largo">
+    <label for="campo-next_step">Próximo passo</label>
+    <input id="campo-next_step" name="next_step" type="text" maxlength="300" value="{{ values.next_step or '' }}">
+  </div>
+
+  <div class="campo campo-largo">
+    <label for="campo-description">Descrição</label>
+    <textarea id="campo-description" name="description" rows="3" maxlength="4000">{{ values.description or '' }}</textarea>
+  </div>
+
+  <div class="campo campo-largo">
+    <label for="campo-notes">Notas e bloqueios</label>
+    <textarea id="campo-notes" name="notes" rows="2" maxlength="4000">{{ values.notes or '' }}</textarea>
+  </div>
+
+  <div class="campo campo-largo">
+    <label for="campo-reason">Motivo {% if mode == "editar" %}da alteração{% else %}da criação{% endif %} <span class="discreto">(opcional, vai para o histórico)</span></label>
+    <input id="campo-reason" name="reason" type="text" maxlength="300" value="{{ values.reason or '' }}">
+  </div>
+
+  <div class="acoes">
+    <button class="botao" type="submit">{% if mode == "editar" %}Salvar alterações{% else %}Criar atividade{% endif %}</button>
+    <a class="botao botao-secundario" href="{% if mode == 'editar' %}/atividades/{{ a.activity_id }}{% else %}/atividades{% endif %}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selo_estado, prazo, responsaveis %}
+{% block title %}{{ a.activity_id }} · {{ a.title }}{% endblock %}
+{% block content %}
+{% set ACOES = {"import": "Importada da planilha", "create": "Criada na aplicação", "update": "Editada"} %}
+<nav class="trilha" aria-label="Você está em">
+  <a href="/atividades">Todas as atividades</a> <span aria-hidden="true">›</span> <span aria-current="page">{{ a.activity_id }}</span>
+</nav>
+
+<h1>{{ a.title }}</h1>
+<p class="linha-meta"><code>{{ a.activity_id }}</code> {{ selo_estado(a.status) }}</p>
+
+{% if a.pending %}
+<div class="aviso aviso-alerta" role="status">
+  <strong>Mudança proposta aguardando revisão</strong> ({{ a.pending }}). Os valores abaixo continuam oficiais até uma pessoa revisora aprovar.
+</div>
+{% endif %}
+
+<section class="cartao" aria-labelledby="t-dados">
+  <h2 id="t-dados">Dados oficiais</h2>
+  <dl class="pares">
+    <dt>Responsáveis</dt><dd>{{ responsaveis(a) }}</dd>
+    <dt>Prazo</dt><dd>{{ prazo(a) }}</dd>
+    <dt>Estado</dt><dd>{{ selo_estado(a.status) }}</dd>
+    <dt>Frente</dt><dd>{% if a.front %}{{ a.front }}{% else %}<span class="a-confirmar">A confirmar</span>{% endif %}</dd>
+    <dt>Próximo passo</dt><dd>{% if a.next_step %}{{ a.next_step }}{% else %}<span class="a-confirmar">Não registrado</span>{% endif %}</dd>
+    <dt>Prioridade</dt><dd>{{ a.priority or "—" }}</dd>
+    <dt>Notas e bloqueios</dt><dd class="texto-livre">{{ a.notes or "—" }}</dd>
+    <dt>Descrição</dt><dd class="texto-livre">{{ a.description or "—" }}</dd>
+    <dt>Origem</dt>
+    <dd>
+      {% if a.origin == "import" %}Importada da planilha em {{ a.created_at | dt }}
+      {% elif a.origin == "manual" %}Criada manualmente por {{ creator or a.created_by }} em {{ a.created_at | dt }}
+      {% else %}Criada a partir de sugestão aprovada em {{ a.created_at | dt }}{% endif %}
+    </dd>
+    <dt>Última atualização</dt><dd>{{ a.updated_at | dt }}</dd>
+  </dl>
+  <div class="acoes">
+    <a class="botao" href="/atividades/{{ a.activity_id }}/editar">Editar atividade</a>
+  </div>
+</section>
+
+<section class="cartao" aria-labelledby="t-estado">
+  <h2 id="t-estado">Mudar estado</h2>
+  {% if not me %}<p class="discreto">Escolha no topo da página quem você é: a mudança fica registrada com o seu nome.</p>{% endif %}
+  <form class="form-estado" method="post" action="/atividades/{{ a.activity_id }}/estado">
+    <div class="campo">
+      <label for="novo-estado">Novo estado</label>
+      <select id="novo-estado" name="status">
+        {% for k, v in STATUSES.items() %}<option value="{{ k }}"{% if a.status == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo campo-largo">
+      <label for="motivo-estado">Motivo <span class="discreto">(opcional; ex.: o que está bloqueando)</span></label>
+      <input id="motivo-estado" name="reason" type="text" maxlength="300">
+    </div>
+    <button class="botao botao-secundario" type="submit">Salvar estado</button>
+  </form>
+</section>
+
+<section aria-labelledby="t-fontes">
+  <h2 id="t-fontes">Fonte e evidência</h2>
+  {% if refs %}
+  <ul class="lista-fontes">
+    {% for r in refs %}
+    <li class="cartao">
+      <p>
+        <strong>{{ {"imported_from": "Importada de", "origin": "Decisão registrada em"}.get(r.relation_type, "Citada em") }}</strong>
+        {% if r.web_url %}<a href="{{ r.web_url }}" target="_blank" rel="noopener">{{ r.source_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ r.source_name }}{% endif %}
+        {% if r.locator %}<span class="discreto">— {{ r.locator }}</span>{% endif %}
+        <span class="discreto">· versão <code>{{ r.version_or_hash[:8] }}</code></span>
+      </p>
+      {% if r.sync_status == "unavailable" %}
+      <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Fonte indisponível</span> {{ r.status_reason }}</p>
+      {% endif %}
+      {% if r.quote %}<blockquote class="evidencia">{{ r.quote }}</blockquote>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="vazio">Sem documento de origem: {% if a.origin == "manual" %}atividade criada diretamente na aplicação.{% else %}nenhuma referência registrada.{% endif %}</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="t-historico">
+  <h2 id="t-historico">Histórico</h2>
+  <ol class="historico">
+    {% for ev in events %}
+    <li>
+      <p class="historico-cabeca">
+        <strong>{{ ACOES.get(ev.action, ev.action) }}</strong>
+        <span>· {{ ev.ts | dt }}</span>
+        <span>· {% if ev.actor_id == IMPORT_ACTOR %}importação automática (regra do INDEX){% else %}por {{ ev.actor_name or ev.actor_id }}{% endif %}</span>
+      </p>
+      {% if ev.action in ("import", "create") %}
+      <details>
+        <summary>Valores iniciais</summary>
+        <dl class="pares pares-compactos">
+          {% for f in ev.fields %}<dt>{{ FIELD_LABELS[f] }}</dt><dd>{{ ev.after[f] | campo(f, member_names) }}</dd>{% endfor %}
+        </dl>
+      </details>
+      {% else %}
+      <ul class="mudancas">
+        {% for f in ev.fields %}
+        <li><strong>{{ FIELD_LABELS[f] }}:</strong> <del>{{ ev.before.get(f) | campo(f, member_names) }}</del>
+          <span aria-hidden="true">→</span><span class="sr"> passou a ser </span> <ins>{{ ev.after.get(f) | campo(f, member_names) }}</ins></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if ev.reason %}<p class="discreto">{{ ev.reason }}</p>{% endif %}
+      <p class="discreto">Fonte:
+        {% if ev.source_file_id %}
+          {% if ev.source_url %}<a href="{{ ev.source_url }}" target="_blank" rel="noopener">{{ ev.source_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ ev.source_name or ev.source_file_id }}{% endif %}
+          {% if ev.source_version %}(versão <code>{{ ev.source_version[:8] }}</code>){% endif %}
+        {% else %}feita na própria aplicação, sem documento de origem{% endif %}
+      </p>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}
