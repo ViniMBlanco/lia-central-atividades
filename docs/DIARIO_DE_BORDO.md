@@ -65,3 +65,19 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
   - a banca roda no ambiente dela.
 
   Por isso: README reproduzível, pasta pronta para compartilhar e botão de sincronização manual.
+
+## 30/09/2026 — Dificuldade: erro de faturamento no Google Cloud
+
+- Ao entrar no Google Cloud, tentei ativar o faturamento (período de teste) e recebi **"Não foi possível concluir a configuração de faturamento [OR_BACR2_59]"**, além de um e-mail do Google dizendo que a tentativa de cadastro foi negada.
+- Verificação: o faturamento **não é necessário** para este projeto.
+  - O pré-requisito do quickstart da Drive API é só "um projeto no Google Cloud".
+  - A página de limites da Drive API diz: "All standard use of the Google Drive API is available at no additional cost".
+  - Criar um projeto não exige conta de faturamento.
+- Decisão: criar o projeto **sem faturamento**, ignorando a oferta de teste gratuito, e não tentar o faturamento de novo.
+
+## 03/10/2026 — Fase 0 concluída
+
+- Configurei o Google Cloud (projeto sem faturamento, Drive API, tela de consentimento External/Testing com meu e-mail como usuário de teste, escopo só `drive.readonly`, cliente Web com callback `http://localhost:8000/auth/callback`), a pasta de teste no Drive e a chave do Gemini no mesmo projeto.
+- Credenciais ficam só no `.env` local, ignorado pelo git. A conferência foi só de presença e tamanho das variáveis, sem ler os valores.
+- Ao criar o cliente OAuth, deixei desmarcada a opção "usado por um agente de IA": o app faz um OAuth comum e a IA só lê texto.
+- Próximo passo: Fase 1 (estrutura do app, `schema.sql`, OAuth, varredura do Drive, tela de estado da sincronização).
