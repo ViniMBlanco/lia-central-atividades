@@ -98,3 +98,22 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
   - Revisando o código gerado, o assistente percebeu que as credenciais eram recarregadas **sem a data de expiração**. Assim a biblioteca consideraria o token sempre válido e o sync passaria a falhar depois de 1 hora. Corrigido antes do primeiro teste real.
   - O log de acesso do servidor gravaria a URL do callback com o código de autorização do Google, e o guia do Drive pede para não registrar isso. Adicionei um filtro que troca a query do `/auth/callback` por `[omitido]`, e conferi no log.
 - **Testes:** 42 testes automatizados com um Drive falso em memória e os arquivos do pacote. No Drive real: 6 arquivos processados com link, 0 falhas. A sincronização automática seguinte não baixou nada nem duplicou versões. Registro no caso 0 de `docs/VALIDACAO.md`.
+
+## 03/10/2026 — Decisões: fonte oficial e revisores
+
+- **Fonte oficial das atividades.** A planilha apontada pelo `INDEX.md` cria as ACT-\* **uma única vez**. A partir daí, o banco do app é a verdade.
+  - Se essa planilha for editada depois, cada diferença vira **sugestão** para revisão humana: linha nova vira sugestão de criação; linha removida não apaga nada, só gera aviso.
+  - Uma planilha que o INDEX não aponta nunca importa nem apaga dados.
+  - Alternativas que considerei:
+    - deixar a planilha como fonte oficial: exigiria escrever no Drive, que está fora do escopo;
+    - espelhar e sobrescrever o banco: um documento mudaria o dado oficial sem revisão;
+    - importar e ignorar edições posteriores;
+    - aplicar sozinho as mudanças de campos que ninguém decidiu no app. Esta é a mais defensável, porque segue a precedência do INDEX.
+
+    Fiquei com a regra única ("nada muda sem um humano aprovar") porque o INDEX chama a planilha de "fonte inicial e provisória" e o GUIA diz que o aplicativo exibe as alterações aprovadas "depois da importação da planilha".
+- **Revisores.**
+  - Bruno revisa sugestões de qualquer frente: o LEIA_ME diz que ele "pode revisar sugestões", sem limite.
+  - Carla revisa só a Formação: o GUIA diz que ela "revisa propostas de atividades da sua frente".
+  - Quando a sugestão é sobre uma tarefa da própria Carla, a revisão é permitida, com aviso e registro no histórico.
+
+  Alternativas que considerei: deixar os dois revisarem tudo (repetiria a regra depreciada do plano antigo), deixar cada líder só na sua frente (Operações ficaria sem revisor) e proibir a auto-revisão. Esta última é plausível, mas o material não exige.
