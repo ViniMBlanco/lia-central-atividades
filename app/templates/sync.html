@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Estado da sincronização{% endblock %}
+{% macro selo(status) -%}
+  {%- set rotulo, tom = STATUS_LABELS.get(status, (status, "neutro")) -%}
+  <span class="selo selo-{{ tom }}"><span class="selo-icone" aria-hidden="true">{{ {"ok": "✓", "erro": "✕", "alerta": "!", "neutro": "–"}[tom] }}</span>{{ rotulo }}</span>
+{%- endmacro %}
+{% block content %}
+<h1>Estado da sincronização</h1>
+<p class="intro">O app lê a pasta do Google Drive em modo somente leitura: nunca cria, move, renomeia nem apaga arquivos.
+  {% if interval_min %}A pasta é verificada automaticamente a cada {{ interval_min }} min enquanto o app está aberto.{% endif %}</p>
+
+{% if missing %}
+<div class="aviso aviso-erro" role="alert">
+  Configuração incompleta: preencha {{ missing | join(", ") }} no arquivo <code>.env</code> e reinicie o app (veja o README).
+</div>
+{% endif %}
+
+{% if state and state.last_error %}
+<div class="aviso aviso-erro" role="alert">
+  <strong>A última tentativa de sincronização falhou</strong> ({{ state.last_attempt_at | dt }}): {{ state.last_error }}
+  Os dados abaixo são os da última leitura confirmada e podem estar desatualizados.
+</div>
+{% elif stale %}
+<div class="aviso aviso-alerta" role="status">
+  <strong>Dados possivelmente desatualizados:</strong> a última sincronização concluída foi
+  {% if state and state.last_success_at %}{{ state.last_success_at | ago }}{% else %}nunca{% endif %}.
+</div>
+{% endif %}
+
+<section class="cartao" aria-labelledby="t-conexao">
+  <h2 id="t-conexao">Conexão</h2>
+  <dl class="pares">
+    <dt>Conta do Google</dt>
+    <dd>
+      {% if connected %}
+        <span class="selo selo-ok"><span class="selo-icone" aria-hidden="true">✓</span>Conectada</span>
+        {% if state and state.account_name %}<span class="discreto">({{ state.account_name }})</span>{% endif %}
+      {% else %}
+        <span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Não conectada</span>
+      {% endif %}
+    </dd>
+    <dt>Pasta monitorada</dt>
+    <dd>
+      {% if state and state.folder_name %}
+        <a href="{{ state.folder_url }}" target="_blank" rel="noopener">{{ state.folder_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>
+        <span class="discreto">e subpastas</span>
+      {% elif folder_configured %}
+        Configurada, ainda não lida.
+      {% else %}
+        Não configurada.
+      {% endif %}
+    </dd>
+    <dt>Última sincronização concluída</dt>
+    <dd>{% if state and state.last_success_at %}{{ state.last_success_at | dt }} <span class="discreto">({{ state.last_success_at | ago }})</span>{% else %}Nunca{% endif %}</dd>
+    <dt>Última tentativa</dt>
+    <dd>{% if state and state.last_attempt_at %}{{ state.last_attempt_at | dt }}{% else %}—{% endif %}</dd>
+  </dl>
+  <div class="acoes">
+    {% if connected %}
+      <form method="post" action="/sincronizacao/agora">
+        <button class="botao" type="submit"{% if running %} disabled aria-disabled="true"{% endif %}>
+          {% if running %}Sincronizando…{% else %}Sincronizar agora{% endif %}
+        </button>
+      </form>
+      <form method="post" action="/auth/desconectar">
+        <button class="botao botao-secundario" type="submit">Desconectar conta</button>
+      </form>
+    {% else %}
+      <a class="botao" href="/auth/login">Conectar com o Google</a>
+    {% endif %}
+  </div>
+</section>
+
+<section aria-labelledby="t-arquivos">
+  <h2 id="t-arquivos">Arquivos da pasta</h2>
+  {% if sources %}
+  <ul class="contagens" aria-label="Resumo por estado">
+    <li>{{ selo("processed") }} {{ counts.processed }}</li>
+    <li>{{ selo("failed") }} {{ counts.failed }}</li>
+    <li>{{ selo("ignored") }} {{ counts.ignored }}</li>
+    <li>{{ selo("unavailable") }} {{ counts.unavailable }}</li>
+  </ul>
+  <table class="tabela tabela-responsiva">
+    <caption class="sr">Arquivos encontrados na pasta monitorada, com o estado de leitura de cada um</caption>
+    <thead>
+      <tr>
+        <th scope="col">Arquivo</th>
+        <th scope="col">Tipo</th>
+        <th scope="col">Estado</th>
+        <th scope="col">Detalhe</th>
+        <th scope="col">Modificado no Drive</th>
+        <th scope="col">Versão lida</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sources %}
+      <tr>
+        <td data-rotulo="Arquivo">
+          {% if s.web_url %}<a href="{{ s.web_url }}" target="_blank" rel="noopener">{{ s.name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ s.name }}{% endif %}
+          <div class="discreto caminho">{{ s.path }}</div>
+        </td>
+        <td data-rotulo="Tipo">{{ KIND_LABELS.get(s.kind, s.kind) }}</td>
+        <td data-rotulo="Estado">{{ selo(s.sync_status) }}</td>
+        <td data-rotulo="Detalhe">
+          {% if s.status_reason %}{{ s.status_reason }}{% elif s.sync_status == "processed" %}Lido em {{ s.last_processed_at | dt }}{% endif %}
+        </td>
+        <td data-rotulo="Modificado no Drive">{{ s.modified_at | dt }}</td>
+        <td data-rotulo="Versão lida">
+          {% if s.content_hash %}<code title="Hash SHA-256 do conteúdo extraído">{{ s.content_hash[:8] }}</code>{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="vazio">Nenhum arquivo lido ainda. {% if connected %}Use “Sincronizar agora”.{% else %}Conecte uma conta do Google para começar.{% endif %}</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="t-execucoes">
+  <h2 id="t-execucoes">Últimas execuções</h2>
+  {% if runs %}
+  <table class="tabela tabela-responsiva">
+    <caption class="sr">Últimas dez execuções da sincronização</caption>
+    <thead>
+      <tr><th scope="col">Início</th><th scope="col">Origem</th><th scope="col">Resultado</th><th scope="col">Resumo</th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td data-rotulo="Início">{{ r.started_at | dt }}</td>
+        <td data-rotulo="Origem">{{ {"auto": "Automática", "manual": "Manual", "startup": "Ao iniciar"}.get(r.trigger, r.trigger) }}</td>
+        <td data-rotulo="Resultado">
+          {% if r.ok is none %}<span class="selo selo-neutro"><span class="selo-icone" aria-hidden="true">…</span>Em andamento</span>
+          {% elif r.ok %}<span class="selo selo-ok"><span class="selo-icone" aria-hidden="true">✓</span>Concluída</span>
+          {% else %}<span class="selo selo-erro"><span class="selo-icone" aria-hidden="true">✕</span>Falhou</span>{% endif %}
+        </td>
+        <td data-rotulo="Resumo">
+          {% if r.ok == 0 %}{{ r.error }}{% else %}{{ r.n_seen }} arquivo(s); {{ r.n_new }} novo(s), {{ r.n_changed }} alterado(s), {{ r.n_failed }} com falha, {{ r.n_unavailable }} indisponível(is){% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="vazio">Nenhuma sincronização executada ainda.</p>
+  {% endif %}
+</section>
+{% endblock %}

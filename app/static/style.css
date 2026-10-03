@@ -1,0 +1,112 @@
+/* Identidade do case: azul #1433BD principal, ciano #19DCE3 só como acento
+   (ciano nunca com texto branco: contraste 1,7:1). Texto sempre ≥ 4,5:1. */
+:root {
+  --azul: #1433bd;
+  --azul-escuro: #0d2385;
+  --ciano: #19dce3;
+  --preto: #0b0b12;
+  --branco: #ffffff;
+  --fundo: #f5f6fc;
+  --linha: #d5d9ec;
+  --texto: #14161f;
+  --texto-suave: #4a4f63;   /* 7,6:1 sobre branco */
+  --ok-fundo: #e3f4ea;   --ok-texto: #0b5a31;
+  --erro-fundo: #fbe5e5; --erro-texto: #9a1418;
+  --alerta-fundo: #fff2d6; --alerta-texto: #6b4200;
+  --neutro-fundo: #eceef5; --neutro-texto: #3b3f50;
+  --foco: #1433bd;
+  --raio: 6px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--texto);
+  line-height: 1.5;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fundo); }
+h1, h2, h3 { line-height: 1.25; color: var(--preto); }
+h1 { font-size: 1.75rem; margin: 0 0 .5rem; }
+h2 { font-size: 1.25rem; margin: 2rem 0 .75rem; }
+a { color: var(--azul); text-underline-offset: 2px; }
+a:hover { color: var(--azul-escuro); }
+code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: .9em; }
+
+:focus-visible { outline: 3px solid var(--foco); outline-offset: 2px; border-radius: 2px; }
+
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.pular { position: absolute; left: -9999px; top: 0; background: var(--branco); padding: .5rem 1rem; z-index: 10; }
+.pular:focus { left: 1rem; top: 1rem; }
+
+/* Topo e menu */
+.topo { background: var(--azul); color: var(--branco); border-bottom: 4px solid var(--ciano); }
+.topo-interno { max-width: 72rem; margin: 0 auto; padding: .9rem 1rem .4rem; }
+.marca { color: var(--branco); text-decoration: none; display: inline-flex; align-items: baseline; gap: .6rem; }
+.marca:hover { color: var(--branco); }
+.marca-sigla { font-weight: 800; font-size: 1.35rem; letter-spacing: .06em; }
+.marca-nome { font-size: .95rem; opacity: .95; }
+.topo :focus-visible { outline-color: var(--ciano); }
+.menu ul { list-style: none; margin: 0 auto; padding: 0 1rem .5rem; max-width: 72rem; display: flex; flex-wrap: wrap; gap: .25rem; }
+.menu a { display: block; color: var(--branco); text-decoration: none; padding: .4rem .7rem; border-radius: var(--raio); font-size: .95rem; }
+.menu a:hover { background: rgba(255, 255, 255, .14); color: var(--branco); }
+.menu a[aria-current="page"] { background: var(--branco); color: var(--azul); font-weight: 600; }
+
+main { max-width: 72rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+main:focus { outline: none; }
+.intro { color: var(--texto-suave); max-width: 50rem; margin-top: 0; }
+.discreto { color: var(--texto-suave); font-size: .9rem; }
+.caminho { word-break: break-all; }
+.vazio { background: var(--branco); border: 1px dashed var(--linha); border-radius: var(--raio); padding: 1rem; color: var(--texto-suave); }
+
+/* Avisos */
+.aviso { border-radius: var(--raio); padding: .75rem 1rem; margin: 0 0 1rem; border-left: 5px solid; }
+.aviso-ok { background: var(--ok-fundo); color: var(--ok-texto); }
+.aviso-erro { background: var(--erro-fundo); color: var(--erro-texto); }
+.aviso-alerta { background: var(--alerta-fundo); color: var(--alerta-texto); }
+.aviso-info { background: var(--branco); color: var(--texto); border-left-color: var(--azul); }
+
+/* Cartões e listas de pares */
+.cartao { background: var(--branco); border: 1px solid var(--linha); border-radius: var(--raio); padding: 1rem 1.25rem; }
+.cartao h2 { margin-top: 0; }
+.pares { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1.25rem; margin: 0; }
+.pares dt { font-weight: 600; }
+.pares dd { margin: 0; }
+.acoes { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.acoes form { margin: 0; }
+
+/* Botões */
+.botao { display: inline-block; font: inherit; font-weight: 600; background: var(--azul); color: var(--branco); border: 2px solid var(--azul);
+  border-radius: var(--raio); padding: .5rem 1rem; cursor: pointer; text-decoration: none; min-height: 44px; }
+.botao:hover { background: var(--azul-escuro); border-color: var(--azul-escuro); color: var(--branco); }
+.botao-secundario { background: var(--branco); color: var(--azul); }
+.botao-secundario:hover { background: var(--fundo); color: var(--azul-escuro); }
+.botao[disabled] { opacity: .6; cursor: progress; }
+
+/* Selos de estado: sempre ícone + texto, nunca só cor */
+.selo { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; font-weight: 600; padding: .1rem .55rem; border-radius: 999px; white-space: nowrap; }
+.selo-icone { font-weight: 800; }
+.selo-ok { background: var(--ok-fundo); color: var(--ok-texto); }
+.selo-erro { background: var(--erro-fundo); color: var(--erro-texto); }
+.selo-alerta { background: var(--alerta-fundo); color: var(--alerta-texto); }
+.selo-neutro { background: var(--neutro-fundo); color: var(--neutro-texto); }
+.contagens { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
+
+/* Tabelas */
+.tabela { width: 100%; border-collapse: collapse; background: var(--branco); border: 1px solid var(--linha); border-radius: var(--raio); }
+.tabela th, .tabela td { text-align: left; vertical-align: top; padding: .6rem .75rem; border-bottom: 1px solid var(--linha); }
+.tabela thead th { background: var(--preto); color: var(--branco); font-size: .9rem; }
+.tabela tbody tr:last-child td { border-bottom: 0; }
+
+/* Celular: cada linha vira um cartão, sem rolagem lateral */
+@media (max-width: 760px) {
+  h1 { font-size: 1.45rem; }
+  .marca-nome { display: none; }
+  .pares { grid-template-columns: 1fr; }
+  .pares dd { margin-bottom: .5rem; }
+  .tabela-responsiva, .tabela-responsiva tbody, .tabela-responsiva tr, .tabela-responsiva td { display: block; width: 100%; }
+  .tabela-responsiva thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .tabela-responsiva { border: 0; background: none; }
+  .tabela-responsiva tr { background: var(--branco); border: 1px solid var(--linha); border-radius: var(--raio); margin-bottom: .75rem; padding: .25rem 0; }
+  .tabela-responsiva td { border: 0; padding: .3rem .9rem; }
+  .tabela-responsiva td::before { content: attr(data-rotulo); display: block; font-size: .8rem; font-weight: 700; color: var(--texto-suave); }
+}
+
+.rodape { text-align: center; color: var(--texto-suave); font-size: .85rem; padding: 1rem; border-top: 1px solid var(--linha); }

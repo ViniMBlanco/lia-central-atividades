@@ -81,3 +81,20 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
 - Credenciais ficam só no `.env` local, ignorado pelo git. A conferência foi só de presença e tamanho das variáveis, sem ler os valores.
 - Ao criar o cliente OAuth, deixei desmarcada a opção "usado por um agente de IA": o app faz um OAuth comum e a IA só lê texto.
 - Próximo passo: Fase 1 (estrutura do app, `schema.sql`, OAuth, varredura do Drive, tela de estado da sincronização).
+
+## 03/10/2026 — Fase 1: leitura do Drive e tela de sincronização
+
+- **Construído:** estrutura do app (`python -m app`), `schema.sql` com todas as tabelas do plano, login com o Google, varredura da pasta, leitores de `.md`, `.xlsx` e Google Docs, e a tela "Estado da sincronização".
+- **Decisões:**
+  - **Varredura completa e recursiva** a cada execução, em vez da Changes API. A pasta é pequena, e "sumiu da varredura" já cobre remoção, lixeira e arquivo movido. Para dizer qual dos três aconteceu, o app consulta o arquivo individualmente.
+  - **Mudança detectada pelo hash do conteúdo extraído.** O `version` do Drive muda até quando o arquivo só é renomeado. Por isso o app só baixa de novo quando `version`/`modifiedTime` mudam, e só registra versão nova quando o hash muda. Resultado: renomear não gera reprocessamento, e editar gera uma versão nova da **mesma** fonte.
+  - **Falha de listagem aborta a execução antes de mexer no estado dos arquivos.** Se uma pasta não puder ser listada, nada é marcado como removido (invariante "falha ≠ não há atividades").
+  - O tipo do arquivo é decidido pela **extensão**: o Drive marcou meus `.md` como `text/markdown`, mas isso varia conforme a forma de envio.
+  - Google Planilhas nativo é exportado como `.xlsx` e lido pelo mesmo leitor (proteção caso alguém suba a planilha com conversão ligada). `.docx`, PDF, imagem e vídeo aparecem como "Ignorado", com o motivo.
+  - **OAuth:** confere o `state`, usa PKCE e acesso offline (o sync roda sem a pessoa presente). O token fica em `data/google_token.json`, com permissão 600 e fora do git.
+  - **Sincronização automática** a cada 5 min já entrou nesta fase (estava prevista para a Fase 3). Ela usa a mesma trava do botão "Sincronizar agora", então duas execuções nunca se sobrepõem.
+- **Erros e correções:**
+  - Primeiro login: **`Erro 403: access_denied`** ("só pode ser acessado por testadores aprovados"). Minha conta não estava em *Test users* no Google Auth Platform. Adicionei e funcionou.
+  - Revisando o código gerado, o assistente percebeu que as credenciais eram recarregadas **sem a data de expiração**. Assim a biblioteca consideraria o token sempre válido e o sync passaria a falhar depois de 1 hora. Corrigido antes do primeiro teste real.
+  - O log de acesso do servidor gravaria a URL do callback com o código de autorização do Google, e o guia do Drive pede para não registrar isso. Adicionei um filtro que troca a query do `/auth/callback` por `[omitido]`, e conferi no log.
+- **Testes:** 42 testes automatizados com um Drive falso em memória e os arquivos do pacote. No Drive real: 6 arquivos processados com link, 0 falhas. A sincronização automática seguinte não baixou nada nem duplicou versões. Registro no caso 0 de `docs/VALIDACAO.md`.

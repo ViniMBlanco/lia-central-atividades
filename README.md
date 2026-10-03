@@ -34,7 +34,20 @@ Aplicação web local que lê uma pasta do Google Drive e ajuda cada membro da L
 
 ## 4. Instalação e execução
 
-*A preencher.*
+Requer Python 3.13.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env             # preencha conforme a seção 3
+python -m app                    # abre em http://localhost:8000
+python -m pytest                 # testes automatizados
+```
+
+Abra pelo endereço `http://localhost:8000` (e não `127.0.0.1`), porque o callback do OAuth cadastrado no Google usa `localhost`. Em **Estado da sincronização**, clique em **Conectar com o Google**.
+
+Dados locais ficam em `data/` (fora do git): `app.db` (banco SQLite) e `google_token.json` (autorização do Google, permissão 600). Apagar `google_token.json` desconecta a conta; apagar a pasta `data/` zera o cache e o banco.
 
 ## 5. Sincronização
 
