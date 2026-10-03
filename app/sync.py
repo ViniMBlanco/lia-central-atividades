@@ -31,6 +31,7 @@ from .readers import MAX_BYTES, ReadError, classify, extract, file_ext
 log = logging.getLogger(__name__)
 
 _lock = threading.Lock()
+next_auto_at: str | None = None  # próxima verificação automática (ISO/UTC), definida pelo ciclo do app
 
 ClientFactory = Callable[[], DriveClientProtocol]
 

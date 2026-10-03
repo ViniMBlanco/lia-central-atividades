@@ -16,6 +16,17 @@
 </div>
 {% endif %}
 
+{% if a.stale_sources %}
+<div class="aviso aviso-alerta" role="status">
+  <strong>Possivelmente desatualizada.</strong>
+  {% if a.stale_sources | length == 1 %}O documento de origem{% else %}Documentos de origem{% endif %}
+  ({{ a.stale_sources | map(attribute="name") | join(", ") }})
+  {% if a.stale_sources | length == 1 %}não pôde ser lido{% else %}não puderam ser lidos{% endif %} na última sincronização.
+  Os valores abaixo são o último estado confirmado e continuam valendo, mas mudanças feitas nesse documento depois disso não aparecem aqui.
+  <a href="/sincronizacao">Ver o motivo no Estado da sincronização</a>.
+</div>
+{% endif %}
+
 <section class="cartao" aria-labelledby="t-dados">
   <h2 id="t-dados">Dados oficiais</h2>
   <dl class="pares">
@@ -72,6 +83,8 @@
       </p>
       {% if r.sync_status == "unavailable" %}
       <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Fonte indisponível</span> {{ r.status_reason }}</p>
+      {% elif r.sync_status == "failed" %}
+      <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Falha na última leitura</span> {{ r.status_reason }} Mostrando a última versão lida.</p>
       {% endif %}
       {% if r.quote %}<blockquote class="evidencia">{{ r.quote }}</blockquote>{% endif %}
     </li>

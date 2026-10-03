@@ -13,25 +13,14 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
-from . import activities, db
+from . import activities, conflicts, db
 from .activities import IMPORT_ACTOR, PRIORITIES
-from .authority import TEXT_KINDS, Resolution, normalize, refresh, stem
+from .authority import TEXT_KINDS, Resolution, normalize, refresh, register_columns, stem
+from .config import settings
 
-HEADER_ALIASES = {
-    "id": ("id", "codigo", "identificador"),
-    "title": ("atividade", "titulo", "tarefa"),
-    "owners": ("responsaveis", "responsavel"),
-    "due_date": ("prazo", "data limite", "vencimento", "entrega"),
-    "front": ("frente",),
-    "priority": ("prioridade",),
-    "status": ("status", "estado", "situacao"),
-    "next_step": ("proximo passo", "proximos passos"),
-    "origin": ("origem",),
-    "notes": ("notas e bloqueios", "notas", "observacoes", "bloqueios"),
-}
 STATUS_ALIASES = {
     "a fazer": "a_fazer", "pendente": "a_fazer", "nao iniciada": "a_fazer", "aberta": "a_fazer",
     "em andamento": "em_andamento", "em progresso": "em_andamento", "fazendo": "em_andamento",
@@ -42,12 +31,24 @@ STATUS_ALIASES = {
 
 
 def after_sync(conn: sqlite3.Connection, folder_id: str) -> None:
+    """Também é chamada depois de uma decisão de conflito (não lê o Drive, só o banco)."""
     res = refresh(conn, folder_id)
     imported = conn.execute("SELECT * FROM register_import WHERE id = 1").fetchone()
     if imported is None:
         state, message = _try_import(conn, res)
+        imported = conn.execute("SELECT * FROM register_import WHERE id = 1").fetchone()
     else:
         state, message = _check_after_import(conn, res, imported)
+
+    found = conflicts.refresh(conn, res, imported)
+    # Ambiguidade ou troca de fonte já decididas por uma pessoa deixam de pedir atenção.
+    about_source = [c for c in found if c["kind"] in ("fonte_ambigua", "troca_de_fonte")]
+    if state == "atencao" and about_source and all(c["status"] == "resolvido" for c in about_source):
+        state = "importada" if imported is not None else "aguardando"
+        message += "".join(
+            f" Decisão registrada por {c['resolver_name'] or c['resolved_by']} em {_br(c['closed_at'])}: {c['resolution']}"
+            for c in about_source
+        )
     conn.execute(
         """INSERT INTO register_status (id, state, message, checked_at) VALUES (1, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET state = excluded.state, message = excluded.message,
@@ -82,11 +83,11 @@ def _try_import(conn: sqlite3.Connection, res: Resolution) -> tuple[str, str]:
             found = ", ".join(s["name"] for s in sheets) or "nenhuma"
             return "atencao", f"A aba “{wanted}” não existe em {src['name']} (abas: {found})." + nothing
     else:
-        sheet = next((s for s in sheets if _columns(s) is not None), None)
+        sheet = next((s for s in sheets if register_columns(s) is not None), None)
         if sheet is None:
             return "atencao", f"Nenhuma aba de {src['name']} tem as colunas ID e Atividade." + nothing
 
-    columns = _columns(sheet)
+    columns = register_columns(sheet)
     if columns is None:
         return "atencao", f"A aba “{sheet['name']}” de {src['name']} não tem as colunas ID e Atividade." + nothing
     members = conn.execute("SELECT * FROM members").fetchall()
@@ -121,18 +122,6 @@ def _try_import(conn: sqlite3.Connection, res: Resolution) -> tuple[str, str]:
          json.dumps(skipped, ensure_ascii=False)),
     )
     return "importada", f"{n} atividade(s) importada(s) de {src['name']} (aba {sheet['name']})."
-
-
-def _columns(sheet: dict[str, Any]) -> dict[str, int] | None:
-    if not sheet.get("rows"):
-        return None
-    header = [normalize(str(c)) if c is not None else "" for c in sheet["rows"][0]["cells"]]
-    columns: dict[str, int] = {}
-    for field, aliases in HEADER_ALIASES.items():
-        for i, name in enumerate(header):
-            if name in aliases and field not in columns:
-                columns[field] = i
-    return columns if "id" in columns and "title" in columns else None
 
 
 def _import_row(conn, src, sheet_name, r, cells, activity_id, members, now) -> None:
@@ -230,6 +219,13 @@ def _check_after_import(conn: sqlite3.Connection, res: Resolution, imported: sql
     if res.register is None and res.problem:
         return "atencao", f"Atenção ao INDEX: {res.problem}" + keep
     return "importada", f"Importação de {imported['file_name']} em vigor; a planilha não mudou desde então."
+
+
+def _br(value: str | None) -> str:
+    try:
+        return datetime.fromisoformat(value).astimezone(settings.timezone).strftime("%d/%m/%Y %H:%M")
+    except (TypeError, ValueError):
+        return value or "?"
 
 
 # ---------------------------------------------------------------------------

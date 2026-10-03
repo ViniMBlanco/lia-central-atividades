@@ -150,3 +150,28 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
   - "LIA" só aparece como sigla da organização e no nome da pasta de teste.
 - **Decisão:** atividades criadas no app continuam a numeração `ACT-*` (depois de `ACT-104` vem `ACT-105`). A origem manual já aparece na atividade e no histórico. O risco de colisão é tratado sem trocar o padrão: se a planilha trouxer um ID que já existe no app, a linha não sobrescreve a atividade e vira aviso. Há teste automatizado para esse caso.
 - **Lição:** escolha sem base no material deve ser apresentada como proposta, com a justificativa, antes de virar código.
+
+## 03/10/2026 — Fase 3: conflitos de fonte e falhas da sincronização
+
+- **Construído:**
+  - **conflitos de fonte** registrados no banco: planilha parecida com a fonte das atividades e não apontada pelo `INDEX` (vazia ou com dados), fonte ambígua e `INDEX` passando a apontar outra planilha. Aparecem em "Estado da sincronização" e com aviso em "Todas as atividades" e "Minhas atividades";
+  - **decisão humana** do conflito: só quem revisa todas as frentes (Bruno) registra, por escrito, com nome e hora. A decisão não altera atividades nem arquivos;
+  - atividades cuja fonte ficou indisponível ou falhou na última leitura aparecem como **possivelmente desatualizadas** (na lista e no detalhe), mantendo o último estado confirmado;
+  - aviso em **todas as telas** quando a última leitura do Drive falhou ou está atrasada, lembrando que criar e editar continuam funcionando;
+  - leitura **ao iniciar o app** e **nova tentativa mais cedo** depois de falha (30 s, 1, 2, 4 min; depois volta aos 5 min). A tela mostra a hora prevista da próxima verificação.
+- **Decisões:**
+  - **Qual planilha vira conflito:** a que não é apontada pelo INDEX mas pode ser confundida com a fonte — **nome parecido** (alguma palavra em comum com a planilha apontada, ignorando extensão, números e marcas como "cópia" ou "v2") **ou** cabeçalho de registro de atividades (ID e Atividade). Uma planilha sem nenhuma das duas coisas (ex.: orçamento) fica só como "sem autoridade". Ver a correção abaixo: a primeira versão usava só o cabeçalho.
+  - **Ciclo do conflito:** aberto → decidido (por uma pessoa) ou superado (a situação sumiu sozinha, por exemplo o arquivo saiu da pasta). Uma falha de leitura **não** encerra conflito. Uma versão nova do mesmo arquivo abre um conflito novo, porque a decisão anterior valia para outro conteúdo; a mesma situação nunca é registrada duas vezes.
+  - **O que a decisão faz:** só registra. O app não troca a fonte das atividades depois da importação; isso ficou como limitação documentada. Quando a ambiguidade ou a troca de fonte já foi decidida, a situação da fonte deixa de pedir atenção e mostra a decisão.
+- **Erros e correções:**
+  - Um teste mostrou que o conflito da planilha vazia não era encerrado quando ela ia para a lixeira. Causa: com a lista de conflitos atuais vazia, a consulta virava `NOT IN (NULL)`, que em SQL nunca é verdadeiro. Corrigido e coberto por teste.
+- **Testes:** 111 testes automatizados (23 novos): conflito da planilha vazia, cópia com nome parecido sem cabeçalho, sem apagar nada, sem duplicar em novas leituras, superado na lixeira e reaberto ao voltar, falha de leitura que não encerra conflito, permissão (Ana, Carla e Davi não decidem), decisão que não altera atividades, versão nova abrindo conflito novo, troca de fonte decidida, ambiguidade, fonte removida marcando atividades como possivelmente desatualizadas e aviso de falha em todas as telas.
+  - No Drive real: a leitura com o banco já existente atualizou a estrutura sem perder dados (6 arquivos, 4 atividades, nenhum conflito). Os testes de renomear, remover, tirar acesso e subir a planilha vazia no Drive real estão no registro de validação.
+
+## 03/10/2026 — Correção: quando uma planilha vira conflito
+
+- **Saída do modelo:** na primeira versão da Fase 3, o assistente fez virar conflito só a planilha com cabeçalho de registro de atividades (colunas ID e Atividade), sem olhar o nome. O argumento era que "nome parecido" é vago e que o cabeçalho é objetivo.
+- **Verificação:** pedi que ele mostrasse de onde vinha a escolha. Relendo o material, o critério do case é o **nome**: o R10 do enunciado fala em "planilha vazia com **nome parecido**"; a especificação (§3) em "planilha posterior e vazia com **nome semelhante**" e "arquivos **homônimos** sem indicação de autoridade"; o `LEIA_CONFLITO.md` em arquivo que "tem **nome parecido** com o registro de atividades". A `Ata - copia vazia.xlsx` só passava no teste porque, por acaso, tem o mesmo cabeçalho. Uma cópia totalmente vazia, sem cabeçalho (como `Ata_registro_v2.xlsx`), não geraria conflito visível — exatamente o tipo de "caso novo da mesma natureza" que o `LEIA_ME` avisa que a banca pode trazer.
+- **Decisão:** vira conflito a planilha não apontada com **nome parecido ou** cabeçalho de registro. O nome cobre o que o material descreve; o cabeçalho cobre listas paralelas com outro nome (ex.: `Tarefas.xlsx` com linhas `ACT-*`). Alternativas consideradas: toda planilha não apontada (geraria alarme para qualquer orçamento) e só o nome (não pegaria listas paralelas).
+- **O que a decisão do conflito faz:** por enquanto, só registra a decisão (texto, autor e hora) e encerra o conflito; nenhuma atividade muda. Na Fase 4, quando existirem as sugestões por campo, a ideia é acrescentar "aceitar a nova fonte", em que as diferenças viram sugestões para revisão — fluxo a detalhar antes de implementar.
+- **Teste:** cópia vazia sem cabeçalho e planilha de outro conteúdo com nome parecido agora geram conflito; orçamento sem relação continua sem conflito.

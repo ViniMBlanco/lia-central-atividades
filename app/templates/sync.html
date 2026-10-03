@@ -54,6 +54,10 @@
     <dd>{% if state and state.last_success_at %}{{ state.last_success_at | dt }} <span class="discreto">({{ state.last_success_at | ago }})</span>{% else %}Nunca{% endif %}</dd>
     <dt>Última tentativa</dt>
     <dd>{% if state and state.last_attempt_at %}{{ state.last_attempt_at | dt }}{% else %}—{% endif %}</dd>
+    {% if next_auto_at %}
+    <dt>Próxima verificação automática</dt>
+    <dd>por volta de {{ next_auto_at | dt }}</dd>
+    {% endif %}
   </dl>
   <div class="acoes">
     {% if connected %}
@@ -82,6 +86,52 @@
     oficial e nenhum arquivo muda uma atividade sem revisão humana. <a href="/atividades">Ver atividades</a></p>
 </section>
 {% endif %}
+
+<section class="cartao" id="conflitos" aria-labelledby="t-conflitos">
+  <h2 id="t-conflitos">Conflitos de fonte</h2>
+  <p class="discreto">Arquivos que não deixam claro qual é a verdade. Um conflito nunca altera atividades nem arquivos:
+    ele fica aqui até uma pessoa registrar a decisão. Quem decide é quem revisa sugestões de todas as frentes (Bruno).</p>
+  {% if conflict_rows %}
+  <ul class="lista-conflitos">
+    {% for c in conflict_rows %}
+    <li class="conflito">
+      <p class="conflito-cabeca">
+        {% if c.status == "aberto" %}<span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Aguardando decisão</span>
+        {% elif c.status == "resolvido" %}<span class="selo selo-ok"><span class="selo-icone" aria-hidden="true">✓</span>Decidido</span>
+        {% else %}<span class="selo selo-neutro"><span class="selo-icone" aria-hidden="true">–</span>Superado</span>{% endif %}
+        <strong>{{ CONFLICT_KINDS.get(c.kind, c.kind) }}</strong>
+        {% if c.source_name %}<span>·
+          {% if c.web_url %}<a href="{{ c.web_url }}" target="_blank" rel="noopener">{{ c.source_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ c.source_name }}{% endif %}
+          {% if c.source_version %}<span class="discreto">(versão <code>{{ c.source_version[:8] }}</code>)</span>{% endif %}</span>{% endif %}
+      </p>
+      <p>{{ c.description }}</p>
+      <p class="discreto">Detectado em {{ c.created_at | dt }}{% if c.status == "aberto" %}; confirmado na sincronização de {{ c.last_seen_at | dt }}{% endif %}.</p>
+      {% if c.status == "resolvido" %}
+      <p><strong>Decisão de {{ c.resolver_name or c.resolved_by }}</strong> em {{ c.closed_at | dt }}: {{ c.resolution }}</p>
+      {% elif c.status == "superado" %}
+      <p class="discreto">Encerrado sem decisão em {{ c.closed_at | dt }}: a situação deixou de existir na pasta (arquivo removido, movido, alterado ou INDEX corrigido).</p>
+      {% elif can_decide %}
+      <form class="form-decisao" method="post" action="/conflitos/{{ c.conflict_id }}/decisao">
+        <div class="campo campo-largo">
+          <label for="decisao-{{ c.conflict_id }}">Decisão e motivo</label>
+          <textarea id="decisao-{{ c.conflict_id }}" name="resolution" rows="2" maxlength="500" required
+                    aria-describedby="ajuda-decisao-{{ c.conflict_id }}"></textarea>
+          <p class="dica" id="ajuda-decisao-{{ c.conflict_id }}">Ex.: “Manter Ata_registro.xlsx como fonte; esta cópia não tem autoridade.”
+            Registrar a decisão não altera atividades nem arquivos do Drive.</p>
+        </div>
+        <button class="botao" type="submit">Registrar decisão</button>
+      </form>
+      {% else %}
+      <p class="discreto">{% if me %}{{ me.display_name }} não decide conflitos de fonte. {% endif %}A decisão cabe a quem revisa
+        todas as frentes (Bruno): troque o usuário de demonstração no topo da página.</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="vazio">Nenhum conflito de fonte detectado.</p>
+  {% endif %}
+</section>
 
 <section aria-labelledby="t-arquivos">
   <h2 id="t-arquivos">Arquivos da pasta</h2>
@@ -118,7 +168,11 @@
         </td>
         <td data-rotulo="Estado">{{ selo(s.sync_status) }}</td>
         <td data-rotulo="Detalhe">
-          {% if s.status_reason %}{{ s.status_reason }}{% elif s.sync_status == "processed" %}Lido em {{ s.last_processed_at | dt }}{% endif %}
+          {% if s.status_reason %}{{ s.status_reason }}{% endif %}
+          {% if s.sync_status == "processed" %}
+            <div{% if s.status_reason %} class="discreto"{% endif %}>Conteúdo atual lido em {{ s.last_processed_at | dt }}</div>
+            <div class="discreto">Conferido no Drive em {{ s.last_seen_at | dt }}</div>
+          {% endif %}
         </td>
         <td data-rotulo="Modificado no Drive">{{ s.modified_at | dt }}</td>
         <td data-rotulo="Versão lida">

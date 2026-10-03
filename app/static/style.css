@@ -178,4 +178,11 @@ fieldset.campo { border: 0; padding: 0; }
 .form-estado .campo-largo input { width: 100%; }
 .form-estado .botao { margin-bottom: 1rem; }
 
+.lista-conflitos { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; }
+.conflito { border-top: 1px solid var(--linha); padding-top: .9rem; }
+.conflito:first-child { border-top: 0; padding-top: 0; }
+.conflito p { margin: 0 0 .4rem; max-width: 50rem; }
+.conflito-cabeca { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+.form-decisao { margin-top: .6rem; }
+
 .rodape { text-align: center; color: var(--texto-suave); font-size: .85rem; padding: 1rem; border-top: 1px solid var(--linha); }

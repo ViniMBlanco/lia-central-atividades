@@ -28,6 +28,10 @@ def init_db(db_path: Path) -> None:
     conn = connect(db_path)
     try:
         conn.execute("PRAGMA journal_mode = WAL")
+        # Bancos criados antes da Fase 3 têm uma tabela `conflicts` provisória (sempre vazia).
+        columns = {r[1] for r in conn.execute("PRAGMA table_info(conflicts)")}
+        if columns and "conflict_key" not in columns:
+            conn.execute("DROP TABLE conflicts")
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         conn.commit()
     finally:

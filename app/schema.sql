@@ -165,17 +165,23 @@ CREATE TABLE IF NOT EXISTS activity_events (
     suggestion_id  INTEGER REFERENCES suggestions(suggestion_id)
 );
 
+-- Conflitos de fonte: arquivos que não deixam claro qual é a verdade. Nunca mudam atividades;
+-- ficam visíveis até uma pessoa registrar a decisão (resolvido) ou a situação sumir (superado).
+-- A mesma situação (kind + conflict_key) não é registrada duas vezes; nova versão = novo conflito.
 CREATE TABLE IF NOT EXISTS conflicts (
-    conflict_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind        TEXT NOT NULL,
-    file_id     TEXT REFERENCES sources(file_id),
-    description TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'resolvido')),
-    resolved_by TEXT,
-    resolved_at TEXT,
-    resolution  TEXT,
-    created_at  TEXT NOT NULL,
-    UNIQUE (kind, file_id)
+    conflict_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind           TEXT NOT NULL CHECK (kind IN ('planilha_sem_autoridade', 'fonte_ambigua', 'troca_de_fonte')),
+    conflict_key   TEXT NOT NULL,           -- arquivos e versões envolvidos
+    file_id        TEXT REFERENCES sources(file_id),
+    source_version TEXT,
+    description    TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'resolvido', 'superado')),
+    created_at     TEXT NOT NULL,
+    last_seen_at   TEXT NOT NULL,           -- última sincronização em que a situação ainda existia
+    closed_at      TEXT,
+    resolved_by    TEXT REFERENCES members(member_id),
+    resolution     TEXT,                    -- decisão escrita por quem resolveu
+    UNIQUE (kind, conflict_key)
 );
 
 -- ---------------------------------------------------------------------------

@@ -31,6 +31,20 @@ AUTHORITY_LABELS = {
 
 _DEPRECATED = {"deprecated", "obsoleto", "substituido", "superado", "arquivado"}
 
+# Cabeçalhos aceitos numa planilha de atividades (comparados sem acento e em minúsculas).
+HEADER_ALIASES = {
+    "id": ("id", "codigo", "identificador"),
+    "title": ("atividade", "titulo", "tarefa"),
+    "owners": ("responsaveis", "responsavel"),
+    "due_date": ("prazo", "data limite", "vencimento", "entrega"),
+    "front": ("frente",),
+    "priority": ("prioridade",),
+    "status": ("status", "estado", "situacao"),
+    "next_step": ("proximo passo", "proximos passos"),
+    "origin": ("origem",),
+    "notes": ("notas e bloqueios", "notas", "observacoes", "bloqueios"),
+}
+
 
 def normalize(text: str) -> str:
     """Minúsculas, sem acentos e com espaços simples (para comparar nomes e rótulos)."""
@@ -102,6 +116,19 @@ def parse_register_pointer(index_text: str) -> RegisterPointer:
         listed = ", ".join(sorted({p.name for p in candidates}))
         raise Unresolved(f"O INDEX cita mais de uma planilha como fonte ({listed}); nenhuma foi escolhida.", True)
     return candidates[0]
+
+
+def register_columns(sheet: dict) -> dict[str, int] | None:
+    """Colunas de uma aba com cara de registro de atividades (precisa de ID e Atividade)."""
+    if not sheet.get("rows"):
+        return None
+    header = [normalize(str(c)) if c is not None else "" for c in sheet["rows"][0]["cells"]]
+    columns: dict[str, int] = {}
+    for field, aliases in HEADER_ALIASES.items():
+        for i, name in enumerate(header):
+            if name in aliases and field not in columns:
+                columns[field] = i
+    return columns if "id" in columns and "title" in columns else None
 
 
 def mentioned_names(index_text: str) -> set[str]:

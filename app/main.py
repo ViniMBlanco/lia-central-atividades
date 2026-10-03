@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import activities, db, google_auth, sync
+from . import activities, conflicts, db, google_auth, importer, sync
 from .activities import DUE_FILTERS, FIELD_LABELS, ORDERS, PRIORITIES, STATUSES, StaleEdit
 from .authority import AUTHORITY_LABELS
 from .config import Settings, settings
@@ -116,6 +116,7 @@ templates.env.globals.update(
     PRIORITIES=PRIORITIES,
     DUE_FILTERS=DUE_FILTERS,
     AUTHORITY_LABELS=AUTHORITY_LABELS,
+    CONFLICT_KINDS=conflicts.KIND_LABELS,
     IMPORT_ACTOR=activities.IMPORT_ACTOR,
     due=lambda a: activities.due_info(a["due_date"], a["status"], today()),
 )
@@ -126,15 +127,31 @@ templates.env.globals.update(
 # ---------------------------------------------------------------------------
 
 
+def retry_delay(interval: int, failures: int) -> int:
+    """Espera até a próxima verificação: o intervalo normal, ou menos depois de falhas
+    (30 s, 1, 2, 4 min…), sem nunca passar do intervalo normal."""
+    if failures <= 0:
+        return interval
+    return min(interval, 30 * 2 ** (failures - 1))
+
+
 async def _auto_sync_loop(cfg: Settings) -> None:
+    """Primeira verificação ao iniciar; depois a cada intervalo, com nova tentativa mais cedo se falhar."""
+    delay, failures, trigger = 0, 0, "startup"
     while True:
-        await asyncio.sleep(cfg.sync_interval_seconds)
-        if not google_auth.is_connected(cfg) or sync.is_running():
-            continue
-        try:
-            await asyncio.to_thread(sync.run_sync, cfg, "auto")
-        except Exception:  # noqa: BLE001 — o ciclo nunca pode morrer
-            log.exception("Erro no ciclo de sincronização automática")
+        sync.next_auto_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat(timespec="seconds")
+        await asyncio.sleep(delay)
+        if google_auth.is_connected(cfg) and not sync.is_running():
+            try:
+                result = await asyncio.to_thread(sync.run_sync, cfg, trigger)
+            except Exception:  # noqa: BLE001 — o ciclo nunca pode morrer
+                log.exception("Erro no ciclo de sincronização automática")
+                failures += 1
+            else:
+                if result is not None:
+                    failures = 0 if result.ok else failures + 1
+        trigger = "auto"
+        delay = retry_delay(cfg.sync_interval_seconds, failures)
 
 
 @contextlib.asynccontextmanager
@@ -175,10 +192,28 @@ def _me(request: Request, conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
 
 
+def _sync_health(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Última leitura confirmada do Drive e se ela pode estar desatualizada (aparece em todas as telas)."""
+    state = conn.execute("SELECT * FROM sync_state WHERE folder_id=?", (settings.drive_folder_id,)).fetchone()
+    has_sources = conn.execute("SELECT 1 FROM sources LIMIT 1").fetchone() is not None
+    stale = False
+    if has_sources and settings.sync_interval_seconds > 0:
+        last_success = _parse(state["last_success_at"]) if state else None
+        limit = timedelta(seconds=settings.sync_interval_seconds * 2 + 60)
+        stale = last_success is None or datetime.now(timezone.utc) - last_success > limit
+    return {
+        "state": state,
+        "error": state["last_error"] if state else None,
+        "stale": stale,
+        "last_success_at": state["last_success_at"] if state else None,
+    }
+
+
 def render(request: Request, template: str, active: str, status_code: int = 200, **ctx) -> HTMLResponse:
     flashes = request.session.pop("flash", [])
     with db.session(settings.database_path) as conn:
         members = conn.execute("SELECT * FROM members ORDER BY display_name").fetchall()
+        health = _sync_health(conn)
     me = next((m for m in members if m["member_id"] == request.session.get("member_id")), None)
     return templates.TemplateResponse(
         request,
@@ -189,6 +224,7 @@ def render(request: Request, template: str, active: str, status_code: int = 200,
             "members": members,
             "member_names": {m["member_id"]: m["display_name"] for m in members},
             "me": me,
+            "health": health,
             **ctx,
         },
         status_code=status_code,
@@ -258,7 +294,8 @@ def _register_info(conn: sqlite3.Connection) -> dict[str, Any]:
     ).fetchone()
     status = conn.execute("SELECT * FROM register_status WHERE id = 1").fetchone()
     warnings = json.loads(imported["warnings"]) if imported else []
-    return {"imported": imported, "status": status, "warnings": warnings}
+    return {"imported": imported, "status": status, "warnings": warnings,
+            "open_conflicts": conflicts.count_open(conn)}
 
 
 def _summary(rows: list[dict[str, Any]]) -> dict[str, int]:
@@ -434,7 +471,8 @@ async def change_status(request: Request, activity_id: str):
 @app.get("/sincronizacao", response_class=HTMLResponse)
 async def sync_status(request: Request):
     with db.session(settings.database_path) as conn:
-        state = conn.execute("SELECT * FROM sync_state WHERE folder_id=?", (settings.drive_folder_id,)).fetchone()
+        health = _sync_health(conn)
+        state = health["state"]
         sources = conn.execute(
             """SELECT * FROM sources
                ORDER BY CASE sync_status WHEN 'failed' THEN 0 WHEN 'unavailable' THEN 1
@@ -442,15 +480,12 @@ async def sync_status(request: Request):
         ).fetchall()
         runs = conn.execute("SELECT * FROM sync_runs ORDER BY run_id DESC LIMIT 10").fetchall()
         register_status = conn.execute("SELECT * FROM register_status WHERE id = 1").fetchone()
+        conflict_rows = conflicts.list_conflicts(conn)
+        me = _me(request, conn)
     counts = {k: 0 for k in STATUS_LABELS}
     for s in sources:
         counts[s["sync_status"]] = counts.get(s["sync_status"], 0) + 1
-
-    stale = False
-    last_success = _parse(state["last_success_at"]) if state else None
-    if sources and settings.sync_interval_seconds > 0:
-        limit = timedelta(seconds=settings.sync_interval_seconds * 2 + 60)
-        stale = last_success is None or datetime.now(timezone.utc) - last_success > limit
+    connected = google_auth.is_connected(settings)
 
     return render(
         request,
@@ -461,9 +496,12 @@ async def sync_status(request: Request):
         runs=runs,
         register_status=register_status,
         counts=counts,
-        stale=stale,
+        stale=health["stale"],
         running=sync.is_running(),
-        connected=google_auth.is_connected(settings),
+        connected=connected,
+        next_auto_at=sync.next_auto_at if connected and settings.sync_interval_seconds > 0 else None,
+        conflict_rows=conflict_rows,
+        can_decide=conflicts.can_decide(me),
         missing=settings.missing_settings(),
         interval_min=settings.sync_interval_seconds // 60,
         folder_configured=bool(settings.drive_folder_id),
@@ -489,6 +527,26 @@ async def sync_now(request: Request):
     else:
         _flash(request, f"A sincronização falhou: {result.error} Os dados exibidos são os da última leitura confirmada.", "erro")
     return RedirectResponse("/sincronizacao", status_code=303)
+
+
+@app.post("/conflitos/{conflict_id}/decisao")
+async def decide_conflict(request: Request, conflict_id: int):
+    form = await request.form()
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        try:
+            conflicts.decide(conn, conflict_id, me, str(form.get("resolution") or ""))
+        except (conflicts.NotAllowed, ValueError, LookupError) as exc:
+            _flash(request, str(exc), "erro")
+            return RedirectResponse("/sincronizacao#conflitos", status_code=303)
+    _flash(request, f"Decisão registrada por {me['display_name']}. Nenhuma atividade nem arquivo do Drive foi alterado.", "ok")
+    # Atualiza a situação da fonte das atividades sem esperar a próxima sincronização (só banco).
+    try:
+        with db.session(settings.database_path) as conn:
+            importer.after_sync(conn, settings.drive_folder_id)
+    except Exception:  # noqa: BLE001 — a decisão já foi gravada; a próxima sincronização recalcula
+        log.exception("Falha ao recalcular a fonte das atividades após decisão de conflito")
+    return RedirectResponse("/sincronizacao#conflitos", status_code=303)
 
 
 # ---------------------------------------------------------------------------

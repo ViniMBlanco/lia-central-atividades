@@ -52,6 +52,9 @@
         {% if a.pending %}
         <div><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">?</span>Mudança proposta aguardando revisão</span></div>
         {% endif %}
+        {% if a.stale_sources %}
+        <div><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Fonte indisponível: possivelmente desatualizada</span></div>
+        {% endif %}
       </td>
       {% if mostrar_responsaveis %}<td data-rotulo="Responsáveis">{{ responsaveis(a) }}</td>{% endif %}
       <td data-rotulo="Prazo">{{ prazo(a) }}</td>
@@ -82,6 +85,10 @@
     <ul>{% for w in register.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
   </details>
   {% endif %}
+  {% endif %}
+  {% if register.open_conflicts %}
+  <div class="aviso aviso-alerta" role="status"><strong>{{ register.open_conflicts }} conflito(s) de fonte aguardando decisão humana.</strong>
+    Nenhuma atividade foi alterada por eles. <a href="/sincronizacao#conflitos">Ver conflitos</a></div>
   {% endif %}
   {% if st and st.state != "importada" %}
   <div class="aviso aviso-alerta" role="status"><strong>Atenção:</strong> {{ st.message }}

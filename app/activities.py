@@ -109,7 +109,9 @@ def list_activities(
         where.append("a.due_date IS NULL")
     sql = """SELECT a.*,
                     (SELECT COUNT(*) FROM suggestions s
-                      WHERE s.target_activity_id = a.activity_id AND s.review_status = 'pendente') AS pending
+                      WHERE s.target_activity_id = a.activity_id AND s.review_status = 'pendente') AS pending,
+                    (SELECT COUNT(DISTINCT r.file_id) FROM activity_refs r JOIN sources src ON src.file_id = r.file_id
+                      WHERE r.activity_id = a.activity_id AND src.sync_status IN ('unavailable', 'failed')) AS stale_sources
              FROM activities a"""
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -131,6 +133,12 @@ def get(conn: sqlite3.Connection, activity_id: str) -> dict[str, Any] | None:
         "SELECT COUNT(*) FROM suggestions WHERE target_activity_id = ? AND review_status = 'pendente'",
         (activity_id,),
     ).fetchone()[0]
+    a["stale_sources"] = conn.execute(
+        """SELECT DISTINCT s.name, s.sync_status, s.status_reason FROM activity_refs r
+           JOIN sources s ON s.file_id = r.file_id
+           WHERE r.activity_id = ? AND s.sync_status IN ('unavailable', 'failed')""",
+        (activity_id,),
+    ).fetchall()
     return a
 
 

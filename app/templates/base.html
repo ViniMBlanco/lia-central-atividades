@@ -44,6 +44,14 @@
   </header>
 
   <main id="conteudo" tabindex="-1">
+    {% if health and active != "sync" and (health.error or health.stale) %}
+    <div class="aviso aviso-alerta" role="status">
+      <strong>{% if health.error %}A última leitura do Drive falhou{% else %}Dados possivelmente desatualizados{% endif %}.</strong>
+      Você está vendo o último estado confirmado{% if health.last_success_at %} (sincronização de {{ health.last_success_at | dt }}){% endif %}.
+      Criar e editar atividades continua funcionando.
+      <a href="/sincronizacao">Ver o motivo e tentar de novo</a>
+    </div>
+    {% endif %}
     {% for f in flashes %}
     <div class="aviso aviso-{{ f.kind }}" role="{{ 'alert' if f.kind == 'erro' else 'status' }}">{{ f.message }}</div>
     {% endfor %}
