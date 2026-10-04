@@ -2,7 +2,8 @@
 {% from "_macros.html" import selo_estado, prazo, responsaveis %}
 {% block title %}{{ a.activity_id }} · {{ a.title }}{% endblock %}
 {% block content %}
-{% set ACOES = {"import": "Importada da planilha", "create": "Criada na aplicação", "update": "Editada"} %}
+{% set ACOES = {"import": "Importada da planilha", "create": "Criada na aplicação", "update": "Editada",
+                "suggestion_accepted": "Sugestão aceita"} %}
 <nav class="trilha" aria-label="Você está em">
   <a href="/atividades">Todas as atividades</a> <span aria-hidden="true">›</span> <span aria-current="page">{{ a.activity_id }}</span>
 </nav>
@@ -10,9 +11,15 @@
 <h1>{{ a.title }}</h1>
 <p class="linha-meta"><code>{{ a.activity_id }}</code> {{ selo_estado(a.status) }}</p>
 
-{% if a.pending %}
+{% if pending %}
 <div class="aviso aviso-alerta" role="status">
-  <strong>Mudança proposta aguardando revisão</strong> ({{ a.pending }}). Os valores abaixo continuam oficiais até uma pessoa revisora aprovar.
+  <strong>Mudança proposta aguardando revisão</strong> ({{ pending | length }}). Os valores abaixo continuam oficiais até uma pessoa revisora aceitar.
+  <ul>
+    {% for s in pending %}
+    <li>{% for f, v in s.proposed_fields.items() %}{{ FIELD_LABELS[f] }}: {{ s.base_fields.get(f) | campo(f, member_names) }} → {{ v | campo(f, member_names) }}{% if not loop.last %}; {% endif %}{% endfor %}
+      <span class="discreto">({{ s.source_name }}{% if s.source_status == "unavailable" %}, documento indisponível no Drive{% endif %})</span> — <a href="/sugestoes/{{ s.suggestion_id }}">ver evidência e revisar a sugestão #{{ s.suggestion_id }}</a></li>
+    {% endfor %}
+  </ul>
 </div>
 {% endif %}
 
@@ -76,7 +83,8 @@
     {% for r in refs %}
     <li class="cartao">
       <p>
-        <strong>{{ {"imported_from": "Importada de", "origin": "Decisão registrada em"}.get(r.relation_type, "Citada em") }}</strong>
+        <strong>{{ {"imported_from": "Importada de", "origin": "Decisão registrada em", "changed_by": "Alterada por sugestão aceita, vinda de",
+                    "created_from": "Criada por sugestão aceita, vinda de"}.get(r.relation_type, "Citada em") }}</strong>
         {% if r.web_url %}<a href="{{ r.web_url }}" target="_blank" rel="noopener">{{ r.source_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ r.source_name }}{% endif %}
         {% if r.locator %}<span class="discreto">— {{ r.locator }}</span>{% endif %}
         <span class="discreto">· versão <code>{{ r.version_or_hash[:8] }}</code></span>
@@ -101,7 +109,8 @@
     {% for ev in events %}
     <li>
       <p class="historico-cabeca">
-        <strong>{{ ACOES.get(ev.action, ev.action) }}</strong>
+        <strong>{% if ev.action == "create" and ev.suggestion_id %}Criada a partir de sugestão aceita{% else %}{{ ACOES.get(ev.action, ev.action) }}{% endif %}</strong>
+        {% if ev.suggestion_id %}<a href="/sugestoes/{{ ev.suggestion_id }}">(sugestão #{{ ev.suggestion_id }})</a>{% endif %}
         <span>· {{ ev.ts | dt }}</span>
         <span>· {% if ev.actor_id == IMPORT_ACTOR %}importação automática (regra do INDEX){% else %}por {{ ev.actor_name or ev.actor_id }}{% endif %}</span>
       </p>

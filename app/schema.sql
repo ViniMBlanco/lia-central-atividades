@@ -127,24 +127,59 @@ CREATE TABLE IF NOT EXISTS activity_refs (
     created_at      TEXT NOT NULL
 );
 
+-- Análise de uma versão de documento (ata pela IA ou planilha editada por comparação).
+-- Idempotência: cada (file_id, content_hash) é analisado uma única vez com sucesso;
+-- falha fica registrada e é tentada de novo, nunca vira "não há sugestões".
+CREATE TABLE IF NOT EXISTS analyses (
+    analysis_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id       TEXT NOT NULL REFERENCES sources(file_id),
+    content_hash  TEXT NOT NULL,
+    origin        TEXT NOT NULL CHECK (origin IN ('ata', 'planilha')),
+    base_hash     TEXT,                     -- planilha: versão anterior usada na comparação
+    status        TEXT NOT NULL CHECK (status IN ('ok', 'falhou')),
+    generated_by  TEXT NOT NULL,            -- deterministico | gemini:<modelo> | comparacao
+    attempts      INTEGER NOT NULL DEFAULT 1,
+    error         TEXT,
+    n_suggestions INTEGER NOT NULL DEFAULT 0,
+    notes         TEXT NOT NULL DEFAULT '[]', -- JSON: itens descartados pela validação e avisos, com motivo
+    raw_response  TEXT,                     -- resposta da IA como veio (auditoria)
+    tokens_in     INTEGER,
+    tokens_out    INTEGER,
+    duration_ms   INTEGER,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    UNIQUE (file_id, content_hash)
+);
+
+-- Sugestão = proposta de mudança vinda de um documento. Nunca altera nada sozinha:
+-- só vira dado oficial quando uma pessoa revisora aceita (ou ajusta e aceita).
 CREATE TABLE IF NOT EXISTS suggestions (
     suggestion_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    analysis_id          INTEGER REFERENCES analyses(analysis_id),
+    origin               TEXT NOT NULL CHECK (origin IN ('ata', 'planilha')),
     source_file_id       TEXT NOT NULL REFERENCES sources(file_id),
     source_version       TEXT NOT NULL,
+    doc_date             TEXT,              -- data do documento (cabeçalho data_da_reuniao ou modificação no Drive)
     kind                 TEXT NOT NULL CHECK (kind IN ('create', 'update')),
     target_activity_id   TEXT REFERENCES activities(activity_id),
-    front                TEXT,
+    proposed_id          TEXT,              -- criação vinda da planilha: ID da linha (usado se estiver livre)
+    front                TEXT,              -- define quem pode revisar
     front_inferred       INTEGER NOT NULL DEFAULT 0,
-    proposed_fields      TEXT NOT NULL,     -- JSON
-    evidence             TEXT NOT NULL,
+    proposed_fields      TEXT NOT NULL,     -- JSON: só os campos que mudam
+    base_fields          TEXT NOT NULL DEFAULT '{}', -- JSON: valores oficiais desses campos quando a sugestão foi gerada
+    evidence             TEXT NOT NULL,     -- JSON: [{quote, locator}] (trecho literal conferido no documento)
+    rationale            TEXT,              -- por que a sugestão existe
     uncertainties        TEXT NOT NULL DEFAULT '[]',
+    alerts               TEXT NOT NULL DEFAULT '[]', -- ex.: contraria decisão humana registrada no app
     related_activity_ids TEXT NOT NULL DEFAULT '[]',
-    generated_by         TEXT NOT NULL,     -- deterministico | gemini:<modelo> | anthropic:<modelo>
+    generated_by         TEXT NOT NULL,     -- deterministico | gemini:<modelo> | comparacao
     review_status        TEXT NOT NULL DEFAULT 'pendente'
                          CHECK (review_status IN ('pendente', 'aceita', 'ajustada', 'rejeitada', 'substituida')),
     reviewer_id          TEXT REFERENCES members(member_id),
     reviewed_at          TEXT,
     review_reason        TEXT,
+    applied_fields       TEXT,              -- JSON: valores efetivamente aplicados (aceita/ajustada)
+    result_activity_id   TEXT REFERENCES activities(activity_id), -- criação aceita: atividade gerada
     self_review          INTEGER NOT NULL DEFAULT 0,
     dedupe_key           TEXT NOT NULL UNIQUE,
     created_at           TEXT NOT NULL
@@ -181,7 +216,24 @@ CREATE TABLE IF NOT EXISTS conflicts (
     closed_at      TEXT,
     resolved_by    TEXT REFERENCES members(member_id),
     resolution     TEXT,                    -- decisão escrita por quem resolveu
+    decision       TEXT,                    -- troca de fonte: 'manter' | 'aceitar_nova_fonte'
     UNIQUE (kind, conflict_key)
+);
+
+-- Trocas da fonte das atividades aceitas por uma pessoa (conflito "o INDEX aponta outra planilha").
+-- A troca não altera atividades: as diferenças entre a nova planilha e o app viram sugestões.
+CREATE TABLE IF NOT EXISTS register_switches (
+    switch_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    conflict_id    INTEGER REFERENCES conflicts(conflict_id),
+    from_file_id   TEXT NOT NULL,
+    from_file_name TEXT NOT NULL,
+    to_file_id     TEXT NOT NULL REFERENCES sources(file_id),
+    to_file_name   TEXT NOT NULL,
+    to_sheet       TEXT NOT NULL,
+    to_hash        TEXT NOT NULL,
+    decided_by     TEXT NOT NULL REFERENCES members(member_id),
+    decided_at     TEXT NOT NULL,
+    n_suggestions  INTEGER NOT NULL DEFAULT 0
 );
 
 -- ---------------------------------------------------------------------------
@@ -222,3 +274,4 @@ CREATE TABLE IF NOT EXISTS visits (
 CREATE INDEX IF NOT EXISTS idx_sources_status ON sources(sync_status);
 CREATE INDEX IF NOT EXISTS idx_events_activity ON activity_events(activity_id, ts);
 CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(review_status);
+CREATE INDEX IF NOT EXISTS idx_suggestions_target ON suggestions(target_activity_id, review_status);

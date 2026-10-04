@@ -1,0 +1,7 @@
+{
+ "generated_by": "gemini:gemini-3.6-flash",
+ "tokens_in": 916,
+ "tokens_out": 2415,
+ "duration_ms": 20353,
+ "raw_response": "{\"items\":[{\"kind\":\"create\",\"target_activity_id\":null,\"title\":\"Revisar pauta da primeira oficina e entregar proposta de exercício prático\",\"owners\":[\"Carla\"],\"due_date\":\"2026-10-10\",\"next_step\":\"escolher um problema real simples para a atividade da turma\",\"status\":null,\"evidence\":\"Carla revisará a pauta da primeira oficina e entregará uma proposta de exercício prático até 2026-10-10. Próximo passo: escolher um problema real simples para a atividade da turma.\",\"rationale\":\"Criação de nova atividade definida na reunião sob responsabilidade de Carla.\",\"uncertainties\":[],\"related_activity_ids\":[\"ACT-103\"]}]}"
+}

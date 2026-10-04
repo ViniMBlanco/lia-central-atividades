@@ -186,3 +186,18 @@ fieldset.campo { border: 0; padding: 0; }
 .form-decisao { margin-top: .6rem; }
 
 .rodape { text-align: center; color: var(--texto-suave); font-size: .85rem; padding: 1rem; border-top: 1px solid var(--linha); }
+
+/* Sugestões (Fase 4) */
+.contador-menu { display: inline-block; min-width: 1.4rem; margin-left: .3rem; padding: 0 .4rem; border-radius: 999px;
+  background: var(--ciano); color: var(--preto); font-weight: 700; font-size: .85rem; text-align: center; }
+.lista-sugestoes { list-style: none; padding: 0; margin: 0 0 1.5rem; display: grid; gap: .75rem; }
+.sugestao p { margin: 0 0 .4rem; }
+.sugestao-cabeca { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+.notas { margin: 0; padding-left: 1.1rem; }
+.notas li { margin-bottom: .35rem; }
+.comparacao th[scope="row"] { font-weight: 600; }
+.campo-aplicar { border: 1px solid var(--linha); border-radius: var(--raio); padding: .5rem .9rem .75rem; }
+.campo-aplicar legend { padding: 0 .3rem; }
+.formulario h3 { margin-top: 0; }
+.formulario + .formulario { margin-top: 1rem; }
+.dica p { margin: 0 0 .3rem; }

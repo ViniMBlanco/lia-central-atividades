@@ -112,27 +112,33 @@ def _decode(data: bytes) -> str:
 
 
 def parse_header(text: str) -> tuple[str | None, dict[str, str]]:
-    """Título (H1 ou primeira linha) e o bloco de linhas `chave: valor` logo abaixo.
+    """Título e o bloco de linhas `chave: valor` do início do documento.
 
     Aceita linhas em branco entre as linhas de cabeçalho (exportação de Google Docs) e
-    para na primeira linha que não seja `chave: valor`. Chaves sem espaço, como em
+    texto antes do título: um Google Doc convertido de `.docx` exporta primeiro o cabeçalho
+    de página (ex.: "LIGA IA UFSCAR / CASE TÉCNICO"). O bloco é procurado nas primeiras
+    linhas; o título é o `# H1` ou a linha logo antes do bloco. Chaves sem espaço, como em
     `status: ativo` ou `data_da_reuniao: 2026-10-01`.
     """
-    lines = text.split("\n")
-    i = 0
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    if i >= len(lines):
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    if not lines:
         return None, {}
-    title = lines[i].strip().lstrip("#").strip() or None
+    h1_at = next((i for i, line in enumerate(lines[:3]) if line.startswith("# ")), None)
+    # Com "# Título", o bloco vem logo abaixo dele; sem título marcado (exportação do Google Docs),
+    # aceita até duas linhas antes (cabeçalho de página + título).
+    candidates = [h1_at + 1] if h1_at is not None else [1, 2]
+    start = next((i for i in candidates if i < len(lines) and _META_LINE.match(lines[i])), None)
+    h1 = lines[h1_at].lstrip("#").strip() if h1_at is not None else None
+    if start is None:
+        title = h1 or lines[0].lstrip("#").strip() or None
+        return title, {}
     meta: dict[str, str] = {}
-    for line in lines[i + 1 :]:
-        if not line.strip():
-            continue
+    for line in lines[start:]:
         m = _META_LINE.match(line)
         if not m:
             break
         meta.setdefault(m.group(1).lower(), m.group(2))
+    title = h1 or lines[start - 1].lstrip("#").strip() or None
     return title, meta
 
 

@@ -104,3 +104,16 @@ def test_planilha_corrompida_falha():
 def test_arquivo_grande_demais_falha():
     with pytest.raises(ReadError):
         extract("markdown", b"x" * (10 * 1024 * 1024 + 1))
+
+
+def test_cabecalho_depois_do_cabecalho_de_pagina_do_google_docs():
+    """Google Doc convertido do .docx da ata de 03/10: o cabeçalho de página vem antes do título."""
+    text = ("LIGA IA UFSCAR     /     CASE TÉCNICO\nAta de reunião de 3 de outubro de 2026\nstatus: ativo\n"
+            "data_da_reuniao: 2026-10-03\nParticiparam Ana e Bruno.\nNota: isto é corpo, não cabeçalho.\n")
+    title, meta = parse_header(text)
+    assert title == "Ata de reunião de 3 de outubro de 2026"
+    assert meta == {"status": "ativo", "data_da_reuniao": "2026-10-03"}
+
+
+def test_dois_pontos_no_corpo_nao_viram_cabecalho():
+    assert parse_header("# Título\n\nParágrafo de abertura.\n\nNota: com dois pontos no corpo.") == ("Título", {})

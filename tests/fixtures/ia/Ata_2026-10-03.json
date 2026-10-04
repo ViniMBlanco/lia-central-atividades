@@ -1,0 +1,7 @@
+{
+ "generated_by": "gemini:gemini-3.6-flash",
+ "tokens_in": 949,
+ "tokens_out": 2247,
+ "duration_ms": 11134,
+ "raw_response": "{\"items\":[{\"kind\":\"update\",\"target_activity_id\":\"ACT-101\",\"title\":null,\"owners\":[\"Ana\"],\"due_date\":\"2026-10-07\",\"next_step\":\"fechar o roteiro e enviar para Bruno.\",\"status\":null,\"evidence\":\"O carrossel sobre ferramentas, `ACT-101`, continua sob responsabilidade de Ana. O prazo para entregar a versão de aprovação mudou de 2026-10-05 para **2026-10-07**. Bruno aprovará a versão final antes de qualquer publicação. Próximo passo de Ana: fechar o roteiro e enviar para Bruno.\",\"rationale\":\"Atualização do prazo e do próximo passo da atividade ACT-101 com base nas decisões da reunião.\",\"uncertainties\":[],\"related_activity_ids\":[]}]}"
+}

@@ -32,7 +32,16 @@ def init_db(db_path: Path) -> None:
         columns = {r[1] for r in conn.execute("PRAGMA table_info(conflicts)")}
         if columns and "conflict_key" not in columns:
             conn.execute("DROP TABLE conflicts")
+        # Bancos criados antes da Fase 4 têm uma tabela `suggestions` provisória (sempre vazia).
+        columns = {r[1] for r in conn.execute("PRAGMA table_info(suggestions)")}
+        if columns and "analysis_id" not in columns:
+            if conn.execute("SELECT COUNT(*) FROM suggestions").fetchone()[0] == 0:
+                conn.execute("DROP TABLE suggestions")
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        # Colunas acrescentadas depois que a tabela já existia (bancos da Fase 3).
+        columns = {r[1] for r in conn.execute("PRAGMA table_info(conflicts)")}
+        if "decision" not in columns:
+            conn.execute("ALTER TABLE conflicts ADD COLUMN decision TEXT")
         conn.commit()
     finally:
         conn.close()

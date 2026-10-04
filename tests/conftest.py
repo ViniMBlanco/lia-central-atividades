@@ -115,6 +115,8 @@ def cfg(tmp_path):
         token_path=tmp_path / "google_token.json",
         drive_folder_id=ROOT_ID,
         sync_interval_seconds=0,
+        ai_provider="none",  # testes nunca chamam a IA de verdade (respostas gravadas em fixtures/ia)
+        gemini_api_key="",
     )
     db.init_db(s.database_path)
     return s

@@ -107,9 +107,30 @@
       <p>{{ c.description }}</p>
       <p class="discreto">Detectado em {{ c.created_at | dt }}{% if c.status == "aberto" %}; confirmado na sincronização de {{ c.last_seen_at | dt }}{% endif %}.</p>
       {% if c.status == "resolvido" %}
-      <p><strong>Decisão de {{ c.resolver_name or c.resolved_by }}</strong> em {{ c.closed_at | dt }}: {{ c.resolution }}</p>
+      <p><strong>Decisão de {{ c.resolver_name or c.resolved_by }}</strong> em {{ c.closed_at | dt }}{% if c.decision %}
+        — {{ CONFLICT_DECISIONS[c.decision] }}{% endif %}: {{ c.resolution }}</p>
+      {% if c.decision == "aceitar_nova_fonte" %}<p class="discreto">As diferenças entre a nova planilha e o app viraram
+        <a href="/sugestoes">sugestões para revisão</a>; nenhuma atividade mudou com a troca.</p>{% endif %}
       {% elif c.status == "superado" %}
       <p class="discreto">Encerrado sem decisão em {{ c.closed_at | dt }}: a situação deixou de existir na pasta (arquivo removido, movido, alterado ou INDEX corrigido).</p>
+      {% elif can_decide and c.kind == "troca_de_fonte" %}
+      <form class="form-decisao" method="post" action="/conflitos/{{ c.conflict_id }}/decisao">
+        <div class="campo campo-largo">
+          <label for="decisao-{{ c.conflict_id }}">Motivo da decisão</label>
+          <textarea id="decisao-{{ c.conflict_id }}" name="resolution" rows="2" maxlength="500" required
+                    aria-describedby="ajuda-decisao-{{ c.conflict_id }}"></textarea>
+          <div class="dica" id="ajuda-decisao-{{ c.conflict_id }}">
+            <p><strong>Manter a fonte atual:</strong> só registra a decisão; a nova planilha fica sem autoridade.</p>
+            <p><strong>Aceitar a nova fonte:</strong> {{ c.source_name or "a nova planilha" }} passa a ser a fonte das atividades,
+              mas <strong>nenhuma atividade muda agora</strong>: cada diferença entre ela e o app vira uma sugestão para revisão
+              (linha só na planilha → criação; atividade só no app → aviso, nada é apagado; campo já decidido no app → sugestão com alerta).</p>
+          </div>
+        </div>
+        <div class="acoes">
+          <button class="botao botao-secundario" type="submit" name="acao" value="manter">Manter a fonte atual</button>
+          <button class="botao" type="submit" name="acao" value="aceitar_nova_fonte">Aceitar a nova fonte</button>
+        </div>
+      </form>
       {% elif can_decide %}
       <form class="form-decisao" method="post" action="/conflitos/{{ c.conflict_id }}/decisao">
         <div class="campo campo-largo">
@@ -172,6 +193,14 @@
           {% if s.sync_status == "processed" %}
             <div{% if s.status_reason %} class="discreto"{% endif %}>Conteúdo atual lido em {{ s.last_processed_at | dt }}</div>
             <div class="discreto">Conferido no Drive em {{ s.last_seen_at | dt }}</div>
+          {% endif %}
+          {% set an = analyses_by_source.get(s.file_id) %}
+          {% if an and an.status == "ok" %}
+            <div><a href="/sugestoes#analises">Analisada: {{ an.n_suggestions }} sugestão(ões)</a></div>
+          {% elif an %}
+            <div><span class="selo selo-erro"><span class="selo-icone" aria-hidden="true">✕</span>Análise falhou</span> {{ an.error }} <a href="/sugestoes#analises">Tentar de novo</a></div>
+          {% elif s.authority == "minutes" and s.sync_status == "processed" %}
+            <div class="discreto">Análise da ata pendente</div>
           {% endif %}
         </td>
         <td data-rotulo="Modificado no Drive">{{ s.modified_at | dt }}</td>

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lista_sugestoes, gerador %}
+{% block title %}Sugestões para revisar{% endblock %}
+{% block content %}
+<h1>Sugestões para revisar</h1>
+<p class="intro">Propostas de mudança tiradas de documentos do Drive: atas lidas pela IA e edições da planilha importada.
+  Nada aqui é oficial. Uma sugestão só altera uma atividade quando uma pessoa revisora aceita (com ou sem ajuste);
+  rejeitar exige um motivo. Quem revisa: Bruno, em todas as frentes, e Carla, na Formação.</p>
+
+{% if waiting and running %}
+<div class="aviso aviso-info" role="status">
+  <strong>Análise em andamento</strong> ({{ waiting | map(attribute="name") | join(", ") }}): a IA pode levar até um minuto.
+  Recarregue a página para ver as sugestões. Os dados oficiais não mudam até uma pessoa revisar.
+</div>
+{% elif waiting %}
+<div class="aviso aviso-alerta" role="status">
+  <strong>{{ waiting | length }} ata(s) ainda sem análise concluída</strong>
+  ({{ waiting | map(attribute="name") | join(", ") }}). As sugestões delas podem estar faltando;
+  os dados oficiais não mudaram. <a href="#analises">Ver o motivo</a>
+  <form class="acoes" method="post" action="/analises/tentar">
+    <button class="botao botao-secundario" type="submit"{% if running %} disabled aria-disabled="true"{% endif %}>Analisar agora</button>
+  </form>
+</div>
+{% endif %}
+
+{% if not me %}
+<div class="cartao">
+  <p>Escolha quem você é para ver o que você pode revisar. Abaixo, todas as sugestões pendentes, só para leitura.</p>
+  <form class="acoes" method="post" action="/usuario">
+    <input type="hidden" name="next" value="/sugestoes">
+    {% for m in members %}
+    <button class="botao botao-secundario" type="submit" name="member_id" value="{{ m.member_id }}">{{ m.display_name }} · {{ m.front }}</button>
+    {% endfor %}
+  </form>
+</div>
+<section aria-labelledby="t-pendentes">
+  <h2 id="t-pendentes">Pendentes ({{ others | length }})</h2>
+  {% if others %}{{ lista_sugestoes(others, member_names) }}{% else %}<p class="vazio">Nenhuma sugestão pendente.</p>{% endif %}
+</section>
+{% else %}
+  {% if me.review_scope != "none" %}
+  <section aria-labelledby="t-revisar">
+    <h2 id="t-revisar">Para {{ me.display_name }} revisar ({{ to_review | length }})</h2>
+    <p class="discreto">{% if me.review_scope == "all" %}{{ me.display_name }} revisa sugestões de todas as frentes.
+      {% else %}{{ me.display_name }} revisa sugestões da frente {{ me.front }}.{% endif %}</p>
+    {% if to_review %}{{ lista_sugestoes(to_review, member_names) }}
+    {% else %}<p class="vazio">Nenhuma sugestão pendente para você revisar agora.</p>{% endif %}
+  </section>
+  {% else %}
+  <div class="aviso aviso-info" role="status">{{ me.display_name }} não revisa sugestões. Aqui aparecem, só para leitura,
+    as que afetam atividades de {{ me.display_name }}: elas aguardam Bruno{% if me.front == "Formação" %} ou Carla{% endif %}.</div>
+  {% endif %}
+
+  <section aria-labelledby="t-afetam">
+    <h2 id="t-afetam">Afetam {{ me.display_name }}, aguardando outra pessoa ({{ affecting | length }})</h2>
+    {% if affecting %}{{ lista_sugestoes(affecting, member_names) }}
+    {% else %}<p class="vazio">Nenhuma sugestão pendente sobre atividades de {{ me.display_name }} aguardando outra pessoa.</p>{% endif %}
+  </section>
+  {% if others %}<p class="discreto">Há mais {{ others | length }} sugestão(ões) pendente(s) de frentes que {{ me.display_name }} não revisa.</p>{% endif %}
+{% endif %}
+
+<section aria-labelledby="t-revisadas">
+  <h2 id="t-revisadas">Revisadas ou substituídas recentemente</h2>
+  {% if reviewed %}{{ lista_sugestoes(reviewed, member_names) }}
+  {% else %}<p class="vazio">Nenhuma sugestão revisada ainda.</p>{% endif %}
+</section>
+
+<section id="analises" aria-labelledby="t-analises">
+  <h2 id="t-analises">Documentos analisados</h2>
+  <p class="discreto">Atas são lidas por {{ gerador(ai_label) }}; a planilha importada é comparada com a versão anterior, sem IA.
+    Cada versão de documento é analisada uma única vez. Tudo o que a IA propõe passa por conferência automática
+    (o trecho citado precisa existir no documento, a data e o responsável precisam estar escritos, o ID precisa existir)
+    e o que não passa aparece abaixo como descartado, com o motivo.</p>
+  {% if analyses %}
+  <table class="tabela tabela-responsiva">
+    <caption class="sr">Análises de documentos, com resultado e itens descartados</caption>
+    <thead><tr><th scope="col">Documento</th><th scope="col">Resultado</th><th scope="col">Observações</th><th scope="col">Quando</th></tr></thead>
+    <tbody>
+      {% for a in analyses %}
+      <tr>
+        <td data-rotulo="Documento">
+          {% if a.web_url %}<a href="{{ a.web_url }}" target="_blank" rel="noopener">{{ a.source_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ a.source_name }}{% endif %}
+          <div class="discreto">versão <code>{{ a.content_hash[:8] }}</code>{% if not a.is_current %} (já substituída por versão mais nova){% endif %}</div>
+        </td>
+        <td data-rotulo="Resultado">
+          {% if a.status == "ok" %}
+          <span class="selo selo-ok"><span class="selo-icone" aria-hidden="true">✓</span>{{ a.n_suggestions }} sugestão(ões)</span>
+          <div class="discreto">por {{ gerador(a.generated_by) }}</div>
+          {% else %}
+          <span class="selo selo-erro"><span class="selo-icone" aria-hidden="true">✕</span>Análise falhou</span>
+          <div>{{ a.error }}</div>
+          <div class="discreto">{{ a.attempts }} tentativa(s). Nada foi concluído a partir deste documento.</div>
+          {% if a.is_current %}
+          <form method="post" action="/analises/tentar">
+            <input type="hidden" name="file_id" value="{{ a.file_id }}">
+            <button class="botao botao-secundario" type="submit"{% if running %} disabled aria-disabled="true"{% endif %}>Tentar de novo</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        </td>
+        <td data-rotulo="Observações">
+          {% if a.notes %}<ul class="notas">{% for n in a.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% else %}—{% endif %}
+        </td>
+        <td data-rotulo="Quando">{{ a.updated_at | dt }}
+          {% if a.tokens_in %}<div class="discreto">{{ a.tokens_in }} tokens de entrada, {{ a.tokens_out }} de saída{% if a.duration_ms %}, {{ (a.duration_ms / 1000) | round(1) }} s{% endif %}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="vazio">Nenhum documento analisado ainda. As atas são analisadas logo depois de cada sincronização com o Drive.</p>
+  {% endif %}
+</section>
+{% endblock %}

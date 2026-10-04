@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import activities, conflicts, db, google_auth, importer, sync
+from . import activities, analysis, conflicts, db, google_auth, importer, suggestions, sync
 from .activities import DUE_FILTERS, FIELD_LABELS, ORDERS, PRIORITIES, STATUSES, StaleEdit
 from .authority import AUTHORITY_LABELS
 from .config import Settings, settings
@@ -117,6 +117,8 @@ templates.env.globals.update(
     DUE_FILTERS=DUE_FILTERS,
     AUTHORITY_LABELS=AUTHORITY_LABELS,
     CONFLICT_KINDS=conflicts.KIND_LABELS,
+    CONFLICT_DECISIONS=conflicts.DECISIONS,
+    REVIEW_LABELS=suggestions.REVIEW_LABELS,
     IMPORT_ACTOR=activities.IMPORT_ACTOR,
     due=lambda a: activities.due_info(a["due_date"], a["status"], today()),
 )
@@ -214,7 +216,8 @@ def render(request: Request, template: str, active: str, status_code: int = 200,
     with db.session(settings.database_path) as conn:
         members = conn.execute("SELECT * FROM members ORDER BY display_name").fetchall()
         health = _sync_health(conn)
-    me = next((m for m in members if m["member_id"] == request.session.get("member_id")), None)
+        me = next((m for m in members if m["member_id"] == request.session.get("member_id")), None)
+        to_review = suggestions.pending_for(conn, me)
     return templates.TemplateResponse(
         request,
         template,
@@ -224,6 +227,7 @@ def render(request: Request, template: str, active: str, status_code: int = 200,
             "members": members,
             "member_names": {m["member_id"]: m["display_name"] for m in members},
             "me": me,
+            "menu_to_review": to_review,
             "health": health,
             **ctx,
         },
@@ -244,7 +248,6 @@ def _local_path(target: str | None) -> str:
 
 PLACEHOLDERS = {
     "/": ("comece", "Comece aqui"),
-    "/sugestoes": ("sugestoes", "Sugestões para revisar"),
     "/novidades": ("novidades", "Novidades dos documentos"),
 }
 
@@ -294,8 +297,13 @@ def _register_info(conn: sqlite3.Connection) -> dict[str, Any]:
     ).fetchone()
     status = conn.execute("SELECT * FROM register_status WHERE id = 1").fetchone()
     warnings = json.loads(imported["warnings"]) if imported else []
+    switches = conn.execute(
+        """SELECT s.*, m.display_name FROM register_switches s LEFT JOIN members m ON m.member_id = s.decided_by
+           ORDER BY s.switch_id"""
+    ).fetchall()
     return {"imported": imported, "status": status, "warnings": warnings,
-            "open_conflicts": conflicts.count_open(conn)}
+            "open_conflicts": conflicts.count_open(conn),
+            "first_switch": switches[0] if switches else None, "last_switch": switches[-1] if switches else None}
 
 
 def _summary(rows: list[dict[str, Any]]) -> dict[str, int]:
@@ -396,8 +404,9 @@ async def activity_detail(request: Request, activity_id: str):
         events = activities.history(conn, activity_id)
         refs = activities.references(conn, activity_id)
         creator = conn.execute("SELECT display_name FROM members WHERE member_id = ?", (a["created_by"],)).fetchone()
+        pending = suggestions.pending_for_activity(conn, activity_id)
     return render(request, "atividade.html", "todas", title=a["title"], a=a, events=events, refs=refs,
-                  creator=creator["display_name"] if creator else None)
+                  creator=creator["display_name"] if creator else None, pending=pending)
 
 
 @app.get("/atividades/{activity_id}/editar", response_class=HTMLResponse)
@@ -468,6 +477,165 @@ async def change_status(request: Request, activity_id: str):
     return RedirectResponse(f"/atividades/{activity_id}", status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# Sugestões para revisar
+# ---------------------------------------------------------------------------
+
+
+@app.get("/sugestoes", response_class=HTMLResponse)
+async def suggestions_page(request: Request):
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        members = conn.execute("SELECT * FROM members ORDER BY display_name").fetchall()
+        pending = suggestions.list_all(conn, pending=True)
+        reviewed = suggestions.list_all(conn, pending=False)
+        analyses = analysis.list_analyses(conn)
+        waiting = analysis.waiting(conn)
+    for s in pending + reviewed:
+        s["reviewers"] = suggestions.reviewers_for(members, s)
+    mine = (lambda s: me["member_id"] in s["affected_ids"]) if me else (lambda s: False)
+    to_review = [s for s in pending if suggestions.can_review(me, s)]
+    affecting = [s for s in pending if s not in to_review and mine(s)]
+    others = [s for s in pending if s not in to_review and s not in affecting]
+    if me:
+        reviewed = [s for s in reviewed if suggestions.can_review(me, s) or mine(s)]
+    return render(request, "sugestoes.html", "sugestoes", title="Sugestões para revisar", to_review=to_review,
+                  affecting=affecting, others=others, reviewed=reviewed[:15], analyses=analyses, waiting=waiting,
+                  ai_label=settings.ai_label, running=sync.is_running())
+
+
+def _review_values(form: Any, s: dict[str, Any], member_ids: set[str]) -> tuple[dict[str, Any], dict[str, str]]:
+    """Valores escolhidos pela pessoa revisora. Atualização: só os campos marcados como "aplicar"."""
+    errors: dict[str, str] = {}
+    if s["kind"] == "update":
+        fields = [f for f in s["proposed_fields"] if form.get(f"aplicar_{f}")]
+    else:
+        fields = ["title", "owners", "front", "status", "due_date", "next_step"] + [
+            f for f in ("priority", "notes") if f in s["proposed_fields"]]
+    values: dict[str, Any] = {}
+    for f in fields:
+        raw = form.get(f)
+        if f == "owners":
+            chosen = sorted(set(form.getlist("owners")))
+            if any(m not in member_ids for m in chosen):
+                errors[f] = "Responsável desconhecido."
+            values[f] = chosen
+        elif f == "due_date":
+            text = str(raw or "").strip()
+            try:
+                values[f] = date.fromisoformat(text).isoformat() if text else None
+            except ValueError:
+                errors[f] = "Use uma data válida ou deixe em branco para “a definir”."
+        elif f == "status":
+            if raw not in STATUSES:
+                errors[f] = "Escolha um estado da lista."
+            values[f] = raw
+        elif f == "priority":
+            values[f] = raw if raw in PRIORITIES else None
+        else:
+            limit = 4000 if f == "notes" else 300 if f == "next_step" else 200 if f == "title" else 80
+            values[f] = " ".join(str(raw or "").split())[:limit] or None
+    if s["kind"] == "create" and not values.get("title"):
+        errors["title"] = "Informe um título."
+    return values, errors
+
+
+def _suggestion_context(conn: sqlite3.Connection, s: dict[str, Any], me: sqlite3.Row | None) -> dict[str, Any]:
+    members = conn.execute("SELECT * FROM members ORDER BY display_name").fetchall()
+    related = [activities.get(conn, aid) for aid in s["related_activity_ids"]]
+    analysis_row = conn.execute("SELECT * FROM analyses WHERE analysis_id = ?", (s["analysis_id"],)).fetchone()
+    return {
+        "s": s,
+        "can_review": suggestions.can_review(me, s),
+        "reviewers": suggestions.reviewers_for(members, s),
+        "self_review": bool(me and me["member_id"] in s["affected_ids"]),
+        "related": [r for r in related if r],
+        "fronts": activities.known_fronts(conn),
+        "analysis": analysis_row,
+    }
+
+
+@app.get("/sugestoes/{suggestion_id}", response_class=HTMLResponse)
+async def suggestion_detail(request: Request, suggestion_id: int):
+    with db.session(settings.database_path) as conn:
+        s = suggestions.get(conn, suggestion_id)
+        if s is None:
+            return render(request, "nao_encontrada.html", "sugestoes", status_code=404,
+                          title="Sugestão não encontrada", activity_id=f"#{suggestion_id}")
+        ctx = _suggestion_context(conn, s, _me(request, conn))
+    return render(request, "sugestao.html", "sugestoes", title=f"Sugestão #{suggestion_id}",
+                  values=None, errors={}, **ctx)
+
+
+@app.post("/sugestoes/{suggestion_id}/revisao", response_class=HTMLResponse)
+async def review_suggestion(request: Request, suggestion_id: int):
+    form = await request.form()
+    action = str(form.get("acao") or "")
+    reason = str(form.get("motivo") or "")
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        s = suggestions.get(conn, suggestion_id)
+        if s is None:
+            return render(request, "nao_encontrada.html", "sugestoes", status_code=404,
+                          title="Sugestão não encontrada", activity_id=f"#{suggestion_id}")
+        values, errors = None, {}
+        if action == "aceitar":
+            member_ids = {r[0] for r in conn.execute("SELECT member_id FROM members")}
+            values, errors = _review_values(form, s, member_ids)
+        if errors:
+            ctx = _suggestion_context(conn, s, me)
+        else:
+            try:
+                result = suggestions.review(conn, suggestion_id, me, action, values, reason)
+            except suggestions.AlreadyReviewed as exc:
+                conn.rollback()
+                _flash(request, str(exc), "info")
+                return RedirectResponse(f"/sugestoes/{suggestion_id}", status_code=303)
+            except (suggestions.NotAllowed, ValueError, LookupError) as exc:
+                conn.rollback()
+                if action == "rejeitar" or isinstance(exc, suggestions.NotAllowed):
+                    _flash(request, str(exc), "erro")
+                    return RedirectResponse(f"/sugestoes/{suggestion_id}", status_code=303)
+                errors = {"geral": str(exc)}
+                ctx = _suggestion_context(conn, s, me)
+    if errors:
+        return render(request, "sugestao.html", "sugestoes", status_code=422, title=f"Sugestão #{suggestion_id}",
+                      values=values, errors=errors, **ctx)
+    if result.status == "rejeitada":
+        _flash(request, f"Sugestão #{suggestion_id} rejeitada por {me['display_name']}; o motivo ficou registrado. "
+                        "Nenhuma atividade mudou.", "ok")
+        return RedirectResponse("/sugestoes", status_code=303)
+    if s["kind"] == "create":
+        _flash(request, f"Sugestão #{suggestion_id} {REVIEW_VERB[result.status]} por {me['display_name']}: "
+                        f"atividade {result.activity_id} criada, com a ata como fonte no histórico.", "ok")
+    elif result.changed:
+        changed = ", ".join(FIELD_LABELS[f].lower() for f in result.changed)
+        _flash(request, f"Sugestão #{suggestion_id} {REVIEW_VERB[result.status]} por {me['display_name']}: "
+                        f"{changed} de {result.activity_id} atualizado(s) e registrado(s) no histórico.", "ok")
+    else:
+        _flash(request, f"Sugestão #{suggestion_id} {REVIEW_VERB[result.status]}; os valores já eram esses, "
+                        "nenhum campo mudou.", "info")
+    return RedirectResponse(f"/atividades/{result.activity_id}", status_code=303)
+
+
+REVIEW_VERB = {"aceita": "aceita", "ajustada": "ajustada e aceita"}
+
+
+@app.post("/analises/tentar")
+async def retry_analysis(request: Request):
+    form = await request.form()
+    file_id = str(form.get("file_id") or "") or None
+    run = await asyncio.to_thread(sync.run_analysis, settings, file_id)
+    if run is None:
+        _flash(request, "Há uma sincronização em andamento; a análise roda logo depois dela. Recarregue em instantes.", "info")
+    elif run.failed:
+        _flash(request, "A análise falhou de novo: " + " ".join(run.errors) +
+               " Os dados oficiais não mudaram; criar e editar atividades continua funcionando.", "erro")
+    else:
+        _flash(request, f"Análise concluída: {run.created} sugestão(ões) nova(s).", "ok")
+    return RedirectResponse("/sugestoes#analises", status_code=303)
+
+
 @app.get("/sincronizacao", response_class=HTMLResponse)
 async def sync_status(request: Request):
     with db.session(settings.database_path) as conn:
@@ -481,6 +649,7 @@ async def sync_status(request: Request):
         runs = conn.execute("SELECT * FROM sync_runs ORDER BY run_id DESC LIMIT 10").fetchall()
         register_status = conn.execute("SELECT * FROM register_status WHERE id = 1").fetchone()
         conflict_rows = conflicts.list_conflicts(conn)
+        analyses_by_source = analysis.by_source(conn)
         me = _me(request, conn)
     counts = {k: 0 for k in STATUS_LABELS}
     for s in sources:
@@ -501,6 +670,7 @@ async def sync_status(request: Request):
         connected=connected,
         next_auto_at=sync.next_auto_at if connected and settings.sync_interval_seconds > 0 else None,
         conflict_rows=conflict_rows,
+        analyses_by_source=analyses_by_source,
         can_decide=conflicts.can_decide(me),
         missing=settings.missing_settings(),
         interval_min=settings.sync_interval_seconds // 60,
@@ -508,22 +678,31 @@ async def sync_status(request: Request):
     )
 
 
+_background: set[asyncio.Task] = set()  # análises em segundo plano (referência evita coleta antes do fim)
+
+
 @app.post("/sincronizacao/agora")
 async def sync_now(request: Request):
     if not google_auth.is_connected(settings):
         _flash(request, "Conecte uma conta do Google antes de sincronizar.", "erro")
         return RedirectResponse("/sincronizacao", status_code=303)
-    result = await asyncio.to_thread(sync.run_sync, settings, "manual")
+    result = await asyncio.to_thread(sync.run_sync, settings, "manual", analyze=False)
     if result is None:
         _flash(request, "Já havia uma sincronização em andamento. Aguarde alguns segundos e recarregue.", "info")
     elif result.ok:
         c = result.counts
-        _flash(
-            request,
-            f"Sincronização concluída: {c['seen']} arquivo(s) na pasta, {len(result.changed)} com conteúdo novo, "
-            f"{c['failed']} com falha, {c['unavailable']} indisponível(is).",
-            "ok",
-        )
+        with db.session(settings.database_path) as conn:
+            pending = len(analysis.waiting(conn))
+        message = (f"Sincronização concluída: {c['seen']} arquivo(s) na pasta, {len(result.changed)} com conteúdo novo, "
+                   f"{c['failed']} com falha, {c['unavailable']} indisponível(is).")
+        if pending:
+            # A IA pode levar de segundos a um minuto: roda em segundo plano, com a mesma trava da sincronização.
+            task = asyncio.create_task(asyncio.to_thread(sync.run_analysis, settings, None, False))
+            _background.add(task)
+            task.add_done_callback(_background.discard)
+            message += (f" Análise de {pending} ata(s) pela IA em andamento: as sugestões aparecem em "
+                        "“Sugestões para revisar” em alguns segundos (recarregue a página).")
+        _flash(request, message, "ok")
     else:
         _flash(request, f"A sincronização falhou: {result.error} Os dados exibidos são os da última leitura confirmada.", "erro")
     return RedirectResponse("/sincronizacao", status_code=303)
@@ -532,14 +711,22 @@ async def sync_now(request: Request):
 @app.post("/conflitos/{conflict_id}/decisao")
 async def decide_conflict(request: Request, conflict_id: int):
     form = await request.form()
+    action = str(form.get("acao") or "registrar")
     with db.session(settings.database_path) as conn:
         me = _me(request, conn)
         try:
-            conflicts.decide(conn, conflict_id, me, str(form.get("resolution") or ""))
+            conflicts.decide(conn, conflict_id, me, str(form.get("resolution") or ""), action)
+            if action == "aceitar_nova_fonte":  # mesma transação: decisão e troca juntas, ou nenhuma
+                n, _ = importer.accept_new_source(conn, conflict_id, me, settings.drive_folder_id)
         except (conflicts.NotAllowed, ValueError, LookupError) as exc:
+            conn.rollback()
             _flash(request, str(exc), "erro")
             return RedirectResponse("/sincronizacao#conflitos", status_code=303)
-    _flash(request, f"Decisão registrada por {me['display_name']}. Nenhuma atividade nem arquivo do Drive foi alterado.", "ok")
+    if action == "aceitar_nova_fonte":
+        _flash(request, f"Nova fonte aceita por {me['display_name']}. Nenhuma atividade mudou: {n} diferença(s) entre a "
+                        "nova planilha e o app viraram sugestões para revisão.", "ok")
+    else:
+        _flash(request, f"Decisão registrada por {me['display_name']}. Nenhuma atividade nem arquivo do Drive foi alterado.", "ok")
     # Atualiza a situação da fonte das atividades sem esperar a próxima sincronização (só banco).
     try:
         with db.session(settings.database_path) as conn:

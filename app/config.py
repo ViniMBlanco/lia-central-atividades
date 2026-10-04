@@ -32,10 +32,21 @@ class Settings:
     google_redirect_uri: str
     google_drive_scope: str
     drive_folder_id: str
+    ai_provider: str  # gemini | none
+    gemini_api_key: str
+    gemini_model: str
+    ai_timeout_seconds: int
 
     @property
     def google_configured(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret and self.google_redirect_uri)
+
+    @property
+    def ai_label(self) -> str:
+        """Quem gera as sugestões das atas (sem expor chaves)."""
+        if self.ai_provider == "gemini" and self.gemini_api_key and self.gemini_model:
+            return f"gemini:{self.gemini_model}"
+        return "deterministico"
 
     def missing_settings(self) -> list[str]:
         """Nomes (nunca valores) das variáveis obrigatórias que estão vazias."""
@@ -69,6 +80,10 @@ def load_settings() -> Settings:
         google_redirect_uri=_get("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback"),
         google_drive_scope=_get("GOOGLE_DRIVE_SCOPE", "https://www.googleapis.com/auth/drive.readonly"),
         drive_folder_id=_get("DRIVE_TEST_FOLDER_ID"),
+        ai_provider=_get("AI_PROVIDER", "gemini").lower(),
+        gemini_api_key=_get("GEMINI_API_KEY"),
+        gemini_model=_get("GEMINI_MODEL", "gemini-3.6-flash"),
+        ai_timeout_seconds=int(_get("AI_TIMEOUT_SECONDS", "90")),
     )
 
 

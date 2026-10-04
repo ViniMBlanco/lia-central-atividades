@@ -31,6 +31,9 @@ KIND_LABELS = {
     "troca_de_fonte": "O INDEX aponta outra planilha",
 }
 STATUS_LABELS = {"aberto": "Aguardando decisão", "resolvido": "Decidido", "superado": "Superado"}
+# Decisões possíveis. "aceitar_nova_fonte" só existe para a troca de fonte (o INDEX aponta outra
+# planilha); numa planilha com nome parecido, aceitá-la contrariaria o INDEX.
+DECISIONS = {"registrar": None, "manter": "Manteve a fonte atual", "aceitar_nova_fonte": "Aceitou a nova fonte"}
 
 # Palavras que não contam para "nome parecido" (marcas de cópia/versão e ligações).
 _NAME_NOISE = {"copia", "copy", "de", "da", "do", "das", "dos", "e", "final", "novo", "nova", "versao", "vazia", "vazio"}
@@ -71,6 +74,8 @@ def detect(conn: sqlite3.Connection, res: Resolution, imported: sqlite3.Row | No
     official = {imported["file_id"]} if imported is not None else set()
     if res.register is not None:
         official.add(res.register["file_id"])
+    # Fontes anteriores (trocadas por decisão humana) são histórico, não conflito.
+    official |= {r[0] for r in conn.execute("SELECT from_file_id FROM register_switches")}
     # Nomes com que uma planilha pode ser confundida: a apontada pelo INDEX e a importada.
     reference = {n for n in (res.pointer.name if res.pointer else None,
                              imported["file_name"] if imported is not None else None) if n}
@@ -227,20 +232,34 @@ def count_open(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM conflicts WHERE status = 'aberto'").fetchone()[0]
 
 
-def decide(conn: sqlite3.Connection, conflict_id: int, member: sqlite3.Row | None, resolution: str) -> None:
-    """Registra a decisão humana. Não altera atividades nem arquivos: só encerra o conflito."""
+def decide(conn: sqlite3.Connection, conflict_id: int, member: sqlite3.Row | None, resolution: str,
+           action: str = "registrar") -> None:
+    """Registra a decisão humana e encerra o conflito. Não altera atividades nem arquivos.
+
+    Com action="aceitar_nova_fonte", quem chama faz em seguida a troca da fonte
+    (`importer.accept_new_source`), na mesma transação.
+    """
     if not can_decide(member):
         raise NotAllowed("Só quem revisa sugestões de todas as frentes (Bruno) pode decidir conflitos de fonte.")
+    if action not in DECISIONS:
+        raise ValueError("Decisão desconhecida.")
     text = " ".join((resolution or "").split())[:500]
     if len(text) < 3:
         raise ValueError("Escreva a decisão e o motivo antes de registrar.")
-    row = conn.execute("SELECT status FROM conflicts WHERE conflict_id = ?", (conflict_id,)).fetchone()
+    row = conn.execute("SELECT status, kind FROM conflicts WHERE conflict_id = ?", (conflict_id,)).fetchone()
     if row is None:
         raise LookupError("Conflito não encontrado.")
     if row["status"] != "aberto":
         raise ValueError("Este conflito já foi encerrado; nada foi registrado de novo.")
+    if action == "aceitar_nova_fonte" and row["kind"] != "troca_de_fonte":
+        raise ValueError("“Aceitar a nova fonte” só vale quando o INDEX passa a apontar outra planilha.")
     conn.execute(
-        """UPDATE conflicts SET status = 'resolvido', resolved_by = ?, resolution = ?, closed_at = ?
+        """UPDATE conflicts SET status = 'resolvido', resolved_by = ?, resolution = ?, closed_at = ?, decision = ?
            WHERE conflict_id = ? AND status = 'aberto'""",
-        (member["member_id"], text, db.utcnow(), conflict_id),
+        (member["member_id"], text, db.utcnow(), None if action == "registrar" else action, conflict_id),
     )
+
+
+def get_decision(conn: sqlite3.Connection, conflict_id: int) -> str | None:
+    row = conn.execute("SELECT decision FROM conflicts WHERE conflict_id = ?", (conflict_id,)).fetchone()
+    return row["decision"] if row else None

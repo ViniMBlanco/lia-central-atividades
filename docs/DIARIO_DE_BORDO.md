@@ -175,3 +175,74 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
 - **Decisão:** vira conflito a planilha não apontada com **nome parecido ou** cabeçalho de registro. O nome cobre o que o material descreve; o cabeçalho cobre listas paralelas com outro nome (ex.: `Tarefas.xlsx` com linhas `ACT-*`). Alternativas consideradas: toda planilha não apontada (geraria alarme para qualquer orçamento) e só o nome (não pegaria listas paralelas).
 - **O que a decisão do conflito faz:** por enquanto, só registra a decisão (texto, autor e hora) e encerra o conflito; nenhuma atividade muda. Na Fase 4, quando existirem as sugestões por campo, a ideia é acrescentar "aceitar a nova fonte", em que as diferenças viram sugestões para revisão — fluxo a detalhar antes de implementar.
 - **Teste:** cópia vazia sem cabeçalho e planilha de outro conteúdo com nome parecido agora geram conflito; orçamento sem relação continua sem conflito.
+
+## 04/10/2026 — Decisões antes da Fase 4
+
+- **Fluxo das sugestões:** pedi ao assistente que explicasse o fluxo antes de implementar. São três entradas que geram sugestões — ata nova ou editada (IA), planilha importada editada no Drive (comparação célula a célula) e conflito de troca de fonte — e todas caem na mesma tela de revisão, com aceitar, ajustar ou rejeitar com motivo.
+- **Planilha editada:** a comparação é entre a versão nova e a versão anterior **da planilha**, e não contra o banco. Assim, uma edição feita no app (ex.: prazo aprovado pelo Bruno) não gera sugestão para "voltar" ao valor antigo da planilha.
+- **"Aceitar a nova fonte":** só no conflito em que o INDEX passa a apontar outra planilha. Numa planilha com nome parecido, aceitar contrariaria o INDEX; na fonte ambígua, seria outro fluxo ("escolher qual das duas").
+- **Planilha nova contradizendo uma decisão humana:** o assistente recomendou não gerar sugestão, com base na precedência do `INDEX.md` ("decisão humana aprovada na aplicação" vem primeiro). Preferi gerar a sugestão **com um alerta** ("contraria a decisão de X em DD/MM") e deixar o revisor decidir: fica mais perto do R10 ("o conflito fica visível e requer decisão humana") e não esconde informação.
+- **Atas da carga inicial:** também passam pela IA, para a regra ser a mesma para qualquer ata. A validação remove campos que já têm o valor proposto; a ata de 01/10, que só repete a planilha, deve gerar zero sugestões.
+- **Modelo:** `gemini-3.8-flash`, o modelo estável mais recente na documentação oficial do Gemini em 04/10, com camada gratuita. Na camada gratuita o Google pode usar o conteúdo para melhorar seus produtos: aceitável com dados fictícios, mas dados reais exigiriam a camada paga (README, "Antes de usar dados reais").
+
+## 04/10/2026 — Fase 4: sugestões das atas, validação e revisão humana
+
+- **Construído:**
+  - **análise das atas** depois de cada sincronização: cada ata com versão ainda não analisada vai para o Gemini (`gemini-3.8-flash`) com a lista de pessoas e os valores oficiais atuais das atividades; a resposta vem em JSON no formato do contrato da especificação (§6). Cada versão (arquivo + hash do conteúdo) é analisada uma única vez;
+  - **validação antes de mostrar**: trecho citado precisa estar literalmente no documento; ID precisa existir; prazo precisa estar escrito no trecho (data relativa vira prazo vazio + incerteza); responsável precisa ser membro e estar no trecho; hipótese ("talvez", "ninguém assumiu") é descartada; campo igual ao oficial é removido; itens da mesma atividade viram uma sugestão; proposta igual a outra já pendente não se repete. Os descartes aparecem na tela com o motivo;
+  - tela **Sugestões para revisar**, filtrada pela permissão (Bruno: todas as frentes; Carla: Formação; Ana e Davi: só leitura do que os afeta), com contador no menu. O detalhe mostra evidência, onde está no documento, data do documento, valor oficial × proposto e pontos a conferir; dá para **aceitar** (desmarcando ou ajustando campos) ou **rejeitar com motivo**. O aceite grava evento com autor, antes/depois, a ata como fonte e o número da sugestão; recarregar não repete;
+  - **ata editada**: sugestões pendentes da versão antiga ficam "substituídas" e a versão nova é analisada;
+  - **planilha importada editada**: comparação com a versão anterior da planilha; célula mudada → atualização, linha nova → criação, linha apagada → aviso; alerta quando a planilha contradiz uma decisão humana já registrada no app;
+  - **falha da IA** (sem resposta, cota, formato errado): análise "falhou" com o motivo, novas tentativas automáticas (até 3) e botão "Tentar de novo"; sincronização e edição manual seguem funcionando;
+  - **sem chave de IA**: regras simples (ID `ACT-*`, data escrita, "Próximo passo:") dão o mesmo resultado nas atas do pacote.
+- **Verificação com o modelo real** (dados fictícios): `gemini-3.8-flash` acertou as três atas do pacote — 01/10 → nenhuma ação; 03/10 → atualizar ACT-101 (prazo 07/10 e próximo passo), sem pôr Bruno como responsável; 04/10 → criar tarefa para Carla até 10/10, relacionada ao ACT-103, ignorando o "talvez". As respostas foram gravadas em `tests/fixtures/ia/` e os testes as reutilizam sem rede. Por ata: ~1 mil tokens de entrada, 1 a 1,5 mil de saída, 15 a 25 s.
+- **Erros e correções:**
+  - A primeira chamada deu HTTP 400 nas três atas. Causa: para limpar o esquema JSON, o código removia a chave `title` em todo lugar — inclusive a propriedade `title` da atividade. Passou a remover só `default`.
+  - **Cota:** a camada gratuita do `gemini-3.8-flash` tem 5 pedidos por minuto e **20 por dia** por projeto (mensagem da API). As chamadas com o esquema quebrado e as repetições automáticas gastaram a cota do dia; o teste seguinte com o Drive real ficou com a análise "falhou — cota esgotada", sem sugestão inventada e com a sincronização ok. O app deixou de repetir um erro de cota diária (só repete sobrecarga e cota por minuto com espera curta) e o README passou a declarar o limite.
+  - A regra de "atividades relacionadas" escrita pelo assistente (palavra em comum no título) marcou ACT-104 como relacionada à ata de 04/10 só por causa do verbo "revisar". Ficou só "mesmo responsável".
+  - O contador do menu sumia na própria tela de sugestões (duas variáveis com o mesmo nome); um teste pegou.
+
+## 04/10/2026 — Saída incorreta do modelo: o plano B errou a ata de 04/10
+
+- **Contexto:** com a cota diária do `gemini-3.8-flash` esgotada, o assistente rodou as três atas no plano B anotado no planejamento, `gemini-3.5-flash-lite` (cota separada, ~1,5 s por ata, mais barato), e conferimos as respostas contra o gabarito.
+- **Saída incorreta:** na ata de 04/10, ele propôs **atualizar o ACT-103** (prazo 10/10 e novo próximo passo) em vez de criar uma tarefa nova. É a leitura que eu já tinha descartado em 29/09: a ata não cita ID, a seção é "Nova decisão", a entrega (exercício prático) é diferente do briefing e o bloqueio da sala não é mencionado; aceitar mexeria numa tarefa bloqueada sem base. Na ata de 03/10 ele também citou como evidência só a frase do prazo, deixando o próximo passo sem trecho.
+- **Decisão:** manter `gemini-3.8-flash`, que acertou as três atas, e abandonar o flash-lite como plano B. Também entrou uma proteção que vale para qualquer modelo: atualização cujo trecho **não cita o ID** da atividade ganha o alerta "a IA concluiu que se trata da mesma atividade; confira" para o revisor.
+
+## 04/10/2026 — Decisões de implementação da Fase 4
+
+- **Estado também pode ser proposto** ("foi concluída", "está bloqueada"): o contrato da especificação não tem esse campo, mas é uma decisão que uma ata registra. Como os outros, só vale com aceite.
+- **ID inexistente** citado pela IA (ex.: `ACT-999`) é descartado com motivo, não convertido em criação: o revisor vê o descarte e pode criar a atividade à mão.
+- **O que é ata:** cabeçalho `data_da_reuniao` ou a palavra "ata"/"reunião" no nome ou no título (antes: só nome começando por "Ata"), para cobrir arquivos inesperados como "Reunião de alinhamento".
+- **Testes:** 152 automatizados (41 novos): gabarito das três atas com as respostas reais gravadas e com as regras sem IA, idempotência, mesma ata em `.md` e Google Docs, aceite com histórico e fontes, ajuste, rejeição com motivo, criação com auto-revisão, permissões, ata editada, falha da IA com novas tentativas, trecho inexistente, ID desconhecido, hipótese, prazo relativo, pessoa não escrita, instrução dentro do documento, planilha editada (atualização, criação, linha apagada, edição do app preservada, alerta de decisão humana, planilha que volta atrás) e telas.
+
+## 04/10/2026 — Troca de modelo: `gemini-3.6-flash`
+
+- **Problema:** com a cota gratuita diária do `gemini-3.8-flash` esgotada (volta só à noite, perto do prazo), eu precisava de outro modelo para testar com o Drive real. Pedi ao assistente que comparasse as opções em vez de escolher pelo nome.
+- **Como comparamos:** as três atas do pacote em cada modelo estável da família Flash, com a resposta passando pela mesma validação do app; as duas atas que exigem interpretação (03/10 e 04/10) rodaram duas vezes nos finalistas. Preços conferidos na tabela oficial do Gemini no mesmo dia.
+- **Resultado:** `gemini-3.6-flash` e `gemini-3.5-flash` acertaram 5 de 5; `gemini-3.7-flash` falhou nas três chamadas por sobrecarga (503/504); o `gemini-3.5-flash-lite` já tinha errado a ata de 04/10. O 3.5-flash é um pouco mais rápido (7–13 s × 10–20 s), mas custa 2 a 2,4 vezes mais na camada paga.
+- **Decisão:** `gemini-3.6-flash` passa a ser o modelo do produto: mesmo preço do 3.8, gabarito completo duas vezes e nenhuma falha de disponibilidade nos testes. As respostas gravadas para os testes automatizados foram trocadas pelas do 3.6. Custo pago medido: ~US$ 0,01 por ata (mais tokens de raciocínio que o 3.8).
+
+## 04/10/2026 — Conflito de troca de fonte: "aceitar a nova fonte"
+
+- **Construído** (opção b decidida antes da Fase 4): no conflito "o INDEX aponta outra planilha", Bruno escolhe **Manter a fonte atual** ou **Aceitar a nova fonte**, sempre com motivo escrito. Aceitar não muda nenhuma atividade: a nova planilha passa a ser a fonte vigente e cada diferença entre ela e o app vira sugestão (linha só na planilha → criação com o ID dela; atividade só no app → aviso; campo já decidido por uma pessoa no app → sugestão com alerta, como eu tinha escolhido). Decisão e troca são gravadas na mesma transação: ou acontecem as duas, ou nenhuma.
+- **Detalhes que surgiram na implementação:** célula vazia na nova planilha é ignorada (a troca nunca apaga valor do app); sugestões pendentes da planilha anterior ficam "substituídas"; a planilha anterior passa a "Histórico (substituído)" e não abre conflito de "nome parecido" (sem isso, a antiga fonte apareceria como planilha suspeita logo depois da troca); edições posteriores da nova planilha são comparadas com a versão aceita na troca.
+- **Testes:** 157 automatizados (5 novos): troca aceita gerando 3 sugestões sem mudar atividades, alerta de decisão humana, aviso de atividade que só existe no app, ID da planilha mantido na criação, planilha antiga como histórico, edição da nova planilha depois da troca, "manter" sem troca, troca negada para planilha com nome parecido e a tela (só Bruno vê os botões).
+
+## 04/10/2026 — Ensaio com o banco real antes de reiniciar o app
+
+- Uma cópia do banco real foi aberta com o código novo (porta separada): a estrutura foi atualizada sem perder dados (4 atividades, conflito da cópia vazia preservado) e o `gemini-3.6-flash` analisou a ata de 01/10 → 0 sugestões.
+- **O que o ensaio mostrou:** o 3.6 também respondeu 503 (sobrecarga) duas vezes antes de responder; a repetição automática resolveu, e passou de 3 para 4 tentativas. E o "Sincronizar agora" ficou 43 s parado esperando a IA — numa demonstração isso parece travado. Agora o botão responde assim que a leitura do Drive termina, avisa que a análise está em andamento e a IA roda em segundo plano (com a mesma trava da sincronização); a tela de sugestões mostra "Análise em andamento". O ciclo automático continua analisando na própria sincronização.
+
+## 04/10/2026 — Falha encontrada no Drive real: sugestão de ata que foi para a lixeira
+
+- **O que aconteceu:** ao subir a pasta 02, subi por engano o `Ata_2026-10-03.md` junto (o LEIA_ME pede só a versão Google Docs) e o mandei para a lixeira em seguida. O app fez o que devia com o arquivo: leu, analisou (1 sugestão para o ACT-101) e, na sincronização seguinte, marcou "Indisponível — movido para a lixeira", mantendo o último conteúdo.
+- **A falha:** a sugestão continuava pendente e **podia ser aceita**, mesmo com a ata na lixeira; e, quando o Google Doc da mesma ata chegasse, a proposta dele seria descartada como "igual à sugestão já pendente". A única proposta ficaria presa a um arquivo apagado — contra a especificação (§4: fonte removida não pode ser apresentada como confirmada).
+- **Correção:** sugestão com documento indisponível não pode ser aceita (pode ser rejeitada; se o arquivo voltar, o aceite é liberado) e aparece marcada na lista, no detalhe e na atividade; uma proposta equivalente vinda de outro arquivo **substitui** a que perdeu a fonte. "Equivalente" passou a aceitar o mesmo trecho citado, além dos mesmos valores, porque a IA pode escrever o mesmo próximo passo com outra pontuação.
+- **Também observado:** a análise da ata de 04/10 falhou na primeira tentativa (Gemini sobrecarregado) e deu certo sozinha na sincronização automática seguinte, sem ação manual.
+
+## 04/10/2026 — Revisão no Drive real e duas correções
+
+- **Teste:** como Bruno, aceitei a sugestão do ACT-101 (prazo 07/10 e próximo passo); como Carla, aceitei a criação da tarefa da oficina, que virou ACT-105, com o aviso de auto-revisão. O histórico registrou autor, antes/depois, a ata como fonte e o número da sugestão.
+- **Correção 1 — data do documento:** a sugestão da ata de 03/10 aparecia como "documento de 04/10". O Google Doc convertido do `.docx` exporta o cabeçalho de página ("LIGA IA UFSCAR / CASE TÉCNICO") antes do título, e o leitor considerava o bloco `chave: valor` terminado ali, perdendo `data_da_reuniao`; a data caía para a de modificação no Drive. O leitor passou a aceitar até duas linhas antes do bloco quando não há `# título`. Como o texto lido fica guardado, o cabeçalho de todas as fontes é recalculado a cada sincronização sem acessar o Drive, e a data das sugestões daquela versão é corrigida. Um teste escrito junto com a correção mostrou que a primeira versão dela (do assistente) aceitava `chave: valor` em qualquer das 12 primeiras linhas, o que transformaria "Nota: …" no corpo em cabeçalho; restringi a posição.
+- **Correção 2:** o selo "ponto a conferir" contava "o valor oficial mudou desde a sugestão" também depois do aceite — que é justamente quando o valor muda. Agora só conta em sugestões pendentes.
+

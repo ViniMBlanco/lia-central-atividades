@@ -17,6 +17,9 @@ import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
+
+from .config import settings
 
 TEXT_KINDS = ("markdown", "text", "gdoc")
 SHEET_KINDS = ("xlsx", "gsheet")
@@ -209,11 +212,16 @@ def resolve(conn: sqlite3.Connection, folder_id: str) -> Resolution:
 # ---------------------------------------------------------------------------
 
 
+_MINUTES_WORDS = {"ata", "atas", "reuniao", "reunioes"}
+
+
 def _is_minutes(source: sqlite3.Row, meta: dict) -> bool:
+    """Ata: cabeçalho `data_da_reuniao` ou a palavra "ata"/"reunião" no nome ou no título."""
     if source["kind"] not in TEXT_KINDS:
         return False
-    title = normalize(source["doc_title"] or "")
-    return "data_da_reuniao" in meta or title.startswith("ata ") or normalize(source["name"]).startswith("ata")
+    words = set(re.split(r"[^a-z0-9]+", normalize(stem(source["name"]))))
+    words |= set(re.split(r"[^a-z0-9]+", normalize(source["doc_title"] or "")))
+    return "data_da_reuniao" in meta or bool(words & _MINUTES_WORDS)
 
 
 def classify(source: sqlite3.Row, res: Resolution, mentioned: set[str]) -> tuple[str, str]:
@@ -237,13 +245,32 @@ def classify(source: sqlite3.Row, res: Resolution, mentioned: set[str]) -> tuple
     return "none", None
 
 
+def _br_date(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).astimezone(settings.timezone).strftime("%d/%m/%Y")
+    except (TypeError, ValueError):
+        return value
+
+
 def refresh(conn: sqlite3.Connection, folder_id: str) -> Resolution:
     """Recalcula a autoridade de todas as fontes e devolve a fonte das atividades."""
     res = resolve(conn, folder_id)
     mentioned = mentioned_names(_index_text(conn, res.index)) if res.index else set()
+    # Planilhas que já foram a fonte e foram trocadas por decisão humana: histórico.
+    former = {
+        r["from_file_id"]: r for r in conn.execute(
+            """SELECT s.*, m.display_name FROM register_switches s
+               LEFT JOIN members m ON m.member_id = s.decided_by ORDER BY s.switch_id""")
+    }
+    current_register = res.register["file_id"] if res.register is not None else None
     for source in conn.execute("SELECT * FROM sources").fetchall():
         if source["content_hash"] is None:
             authority, reason = "none", None
+        elif source["file_id"] in former and source["file_id"] != current_register:
+            sw = former[source["file_id"]]
+            authority, reason = "deprecated", (
+                f"Fonte anterior das atividades: substituída por {sw['to_file_name']} em {_br_date(sw['decided_at'])}, "
+                f"por decisão de {sw['display_name'] or sw['decided_by']}. Aparece só como histórico.")
         else:
             authority, reason = classify(source, res, mentioned)
         conn.execute(

@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
+{% if active == "sugestoes" %}
+<h1>Sugestão não encontrada</h1>
+<p class="vazio">Não existe sugestão <code>{{ activity_id }}</code>.
+  <a href="/sugestoes">Ver sugestões para revisar</a></p>
+{% else %}
 <h1>Atividade não encontrada</h1>
 <p class="vazio">Não existe atividade com o identificador <code>{{ activity_id }}</code>.
   <a href="/atividades">Ver todas as atividades</a></p>
+{% endif %}
 {% endblock %}

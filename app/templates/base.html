@@ -37,7 +37,8 @@
           ("sync", "/sincronizacao", "Estado da sincronização"),
         ] %}
         {% for chave, href, rotulo in itens %}
-        <li><a href="{{ href }}"{% if active == chave %} aria-current="page"{% endif %}>{{ rotulo }}</a></li>
+        <li><a href="{{ href }}"{% if active == chave %} aria-current="page"{% endif %}>{{ rotulo }}
+          {%- if chave == "sugestoes" and menu_to_review %} <span class="contador-menu">{{ menu_to_review }}<span class="sr"> pendente(s) para você</span></span>{% endif %}</a></li>
         {% endfor %}
       </ul>
     </nav>

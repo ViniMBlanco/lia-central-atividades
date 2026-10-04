@@ -67,21 +67,86 @@
 </table>
 {% endmacro %}
 
+{% macro selo_revisao(status) -%}
+  {%- set rotulo, tom, icone = REVIEW_LABELS[status] -%}
+  <span class="selo selo-{{ tom }}"><span class="selo-icone" aria-hidden="true">{{ icone }}</span>{{ rotulo }}</span>
+{%- endmacro %}
+
+{% macro gerador(label) -%}
+  {%- if label.startswith("gemini:") -%}IA (Gemini, {{ label[7:] }})
+  {%- elif label == "comparacao" -%}comparação da planilha (sem IA)
+  {%- else -%}regras simples (sem IA){%- endif -%}
+{%- endmacro %}
+
+{% macro titulo_sugestao(s) -%}
+  {%- if s.kind == "update" -%}Atualizar {{ s.target_activity_id }}{% if s.target %} — {{ s.target.title }}{% endif %}
+  {%- else -%}Criar atividade: {{ s.proposed_fields.title }}{%- endif -%}
+{%- endmacro %}
+
+{# Lista de sugestões em cartões: o que muda (antes → depois), fonte e quem pode revisar. #}
+{% macro lista_sugestoes(itens, member_names) %}
+<ul class="lista-sugestoes">
+  {% for s in itens %}
+  <li class="cartao sugestao">
+    <p class="sugestao-cabeca">{{ selo_revisao(s.review_status) }}
+      <a class="titulo-atividade" href="/sugestoes/{{ s.suggestion_id }}">{{ titulo_sugestao(s) }}</a>
+      <span class="discreto">#{{ s.suggestion_id }}</span></p>
+    <ul class="mudancas">
+      {% for f, v in s.proposed_fields.items() %}
+      <li><strong>{{ FIELD_LABELS[f] }}:</strong>
+        {% if s.kind == "update" %}<del>{{ s.base_fields.get(f) | campo(f, member_names) }}</del>
+          <span aria-hidden="true">→</span><span class="sr"> passaria a ser </span>{% endif %}
+        <ins>{{ v | campo(f, member_names) }}</ins>{% if f == "front" and s.front_inferred %} <span class="discreto">(inferida do responsável)</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <p class="discreto">Fonte:
+      {% if s.source_url %}<a href="{{ s.source_url }}" target="_blank" rel="noopener">{{ s.source_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ s.source_name }}{% endif %}
+      {% if s.doc_date %}· documento de {{ s.doc_date | data }}{% endif %} · gerada por {{ gerador(s.generated_by) }}</p>
+    {% if s.source_status == "unavailable" %}
+    <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Documento de origem indisponível</span>
+      {% if s.review_status == "pendente" %}não pode ser aceita enquanto o arquivo não voltar ao Drive{% endif %}</p>
+    {% endif %}
+    {% set mudou = s.changed_since and s.review_status == "pendente" %}
+    {% if s.alerts or s.uncertainties or mudou %}
+    <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>{{ (s.alerts | length) + (s.uncertainties | length) + (1 if mudou else 0) }} ponto(s) a conferir</span></p>
+    {% endif %}
+    {% if s.review_status == "pendente" %}
+    <p class="discreto">Quem pode revisar: {{ s.reviewers | join(" ou ") if s.reviewers else "ninguém com permissão (frente a confirmar): Bruno revisa todas as frentes" }}</p>
+    {% elif s.review_status == "substituida" %}
+    <p class="discreto">{{ s.review_reason }}</p>
+    {% else %}
+    <p class="discreto">Revisada por {{ s.reviewer_name or s.reviewer_id }} em {{ s.reviewed_at | dt }}{% if s.review_reason %}: “{{ s.review_reason }}”{% endif %}
+      {% if s.result_activity_id %}· virou <a href="/atividades/{{ s.result_activity_id }}">{{ s.result_activity_id }}</a>{% endif %}</p>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
 {% macro fonte_oficial(register) %}
 {% set imp = register.imported %}
 {% set st = register.status %}
 <section class="cartao fonte-oficial" aria-labelledby="t-fonte">
   <h2 id="t-fonte">De onde vêm estas atividades</h2>
-  {% if imp %}
+  {% set sw1, sw = register.first_switch, register.last_switch %}
+  {% if imp and sw %}
+  <p>As atividades <code>ACT-*</code> foram importadas de {{ sw1.from_file_name }} em {{ imp.imported_at | dt }}.
+    Desde {{ sw.decided_at | dt }}, a fonte vigente é
+    {% if imp.web_url %}<a href="{{ imp.web_url }}" target="_blank" rel="noopener">{{ imp.file_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ imp.file_name }}{% endif %}
+    (aba {{ imp.sheet_name }}), que o <code>INDEX</code> passou a apontar: {{ sw.display_name or sw.decided_by }} aceitou a troca,
+    e as {{ sw.n_suggestions }} diferença(s) com o app viraram sugestões para revisão.</p>
+  {% elif imp %}
   <p>As atividades <code>ACT-*</code> foram importadas de
     {% if imp.web_url %}<a href="{{ imp.web_url }}" target="_blank" rel="noopener">{{ imp.file_name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ imp.file_name }}{% endif %}
     (aba {{ imp.sheet_name }}) em {{ imp.imported_at | dt }}, versão <code title="Hash do conteúdo importado">{{ imp.content_hash[:8] }}</code>,
     porque o <code>INDEX.md</code> aponta essa planilha como fonte inicial.</p>
+  {% endif %}
+  {% if imp %}
   <p class="discreto">Desde a importação, a referência oficial é este app: mudanças entram pela interface, com autor no histórico,
     ou por sugestões aprovadas por uma pessoa. Editar a planilha no Drive não altera nada sozinho.</p>
   {% if register.warnings %}
   <details>
-    <summary>Linhas da planilha não importadas ({{ register.warnings | length }})</summary>
+    <summary>Linhas da planilha não importadas na importação original ({{ register.warnings | length }})</summary>
     <ul>{% for w in register.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
   </details>
   {% endif %}

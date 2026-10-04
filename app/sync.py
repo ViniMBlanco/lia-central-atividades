@@ -10,7 +10,8 @@ Cada execução faz uma varredura completa e recursiva da pasta monitorada:
 
 Execuções nunca se sobrepõem: o botão manual e o ciclo automático usam a mesma trava.
 Depois de uma varredura concluída, `importer.after_sync` recalcula a autoridade das
-fontes e faz a importação única da planilha de atividades.
+fontes e faz a importação única da planilha de atividades; em seguida
+`analysis.analyze_minutes` transforma atas novas ou editadas em sugestões para revisão.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from . import db, importer
+from . import analysis, db, importer
 from .config import Settings
 from .drive import FOLDER_MIME, GDOC_MIME, GSHEET_MIME, XLSX_MIME, DriveClient, DriveClientProtocol, DriveError
 from .google_auth import NotConnected, load_credentials
@@ -53,8 +54,13 @@ def default_client_factory(settings: Settings) -> ClientFactory:
     return lambda: DriveClient(load_credentials(settings))
 
 
-def run_sync(settings: Settings, trigger: str, client_factory: ClientFactory | None = None) -> SyncResult | None:
-    """Executa uma sincronização. Devolve None se já havia outra em andamento."""
+def run_sync(settings: Settings, trigger: str, client_factory: ClientFactory | None = None,
+             analyze: bool = True) -> SyncResult | None:
+    """Executa uma sincronização. Devolve None se já havia outra em andamento.
+
+    analyze=False deixa a análise das atas para depois (o botão manual a roda em segundo plano,
+    para a tela não ficar parada esperando a IA).
+    """
     if not _lock.acquire(blocking=False):
         return None
     try:
@@ -64,7 +70,37 @@ def run_sync(settings: Settings, trigger: str, client_factory: ClientFactory | N
             result = _Sync(conn, settings, trigger, factory).run()
             if result.ok:
                 _interpret(conn, settings)
+                if analyze:
+                    _analyze(conn, settings)
             return result
+        finally:
+            conn.close()
+    finally:
+        _lock.release()
+
+
+def _analyze(conn: sqlite3.Connection, settings: Settings, **kwargs) -> analysis.AnalysisRun | None:
+    """Atas novas ou editadas → sugestões. Falha aqui nunca derruba a sincronização."""
+    try:
+        return analysis.analyze_minutes(conn, settings, **kwargs)
+    except Exception:  # noqa: BLE001
+        conn.rollback()
+        log.exception("Falha inesperada na análise das atas")
+        return None
+
+
+def run_analysis(settings: Settings, file_id: str | None = None, retry_failed: bool = True) -> analysis.AnalysisRun | None:
+    """Análise fora da sincronização: botão "Tentar de novo" ou logo depois do "Sincronizar agora".
+
+    None se uma sincronização está em andamento (usa a mesma trava).
+    """
+    if not _lock.acquire(blocking=False):
+        return None
+    try:
+        conn = db.connect(settings.database_path)
+        try:
+            return _analyze(conn, settings, retry_failed=retry_failed, only_file_id=file_id) or analysis.AnalysisRun(
+                errors=["Falha inesperada na análise; veja o log do servidor."])
         finally:
             conn.close()
     finally:

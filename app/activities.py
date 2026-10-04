@@ -264,14 +264,24 @@ def next_manual_id(conn: sqlite3.Connection) -> str:
     return f"{ID_PREFIX}-{max(numbers, default=0) + 1:03d}"
 
 
-def create(conn: sqlite3.Connection, data: dict[str, Any], actor_id: str, *, reason: str | None = None) -> str:
-    """Criação manual pela interface. Devolve o ID gerado."""
-    conn.execute("BEGIN IMMEDIATE")  # serializa a geração do ID
-    activity_id = next_manual_id(conn)
+def create(conn: sqlite3.Connection, data: dict[str, Any], actor_id: str, *, reason: str | None = None,
+           origin: str = "manual", begin: bool = True, source_file_id: str | None = None,
+           source_version: str | None = None, suggestion_id: int | None = None,
+           requested_id: str | None = None) -> str:
+    """Criação pela interface (manual ou aceite de sugestão). Devolve o ID gerado.
+
+    begin=False quando quem chama já abriu a transação (revisão de sugestão).
+    requested_id: ID de uma linha nova da planilha; usado só se estiver livre.
+    """
+    if begin:
+        conn.execute("BEGIN IMMEDIATE")  # serializa a geração do ID
+    free = requested_id and not conn.execute("SELECT 1 FROM activities WHERE activity_id = ?", (requested_id,)).fetchone()
+    activity_id = requested_id if free else next_manual_id(conn)
     now = db.utcnow()
-    insert(conn, activity_id, data, origin="manual", created_by=actor_id, now=now)
+    insert(conn, activity_id, data, origin=origin, created_by=actor_id, now=now)
     record_event(conn, activity_id, actor_id, "create", None, snapshot(conn, activity_id),
-                 reason=reason or "Criação manual na aplicação", ts=now)
+                 reason=reason or "Criação manual na aplicação", source_file_id=source_file_id,
+                 source_version=source_version, suggestion_id=suggestion_id, ts=now)
     return activity_id
 
 
@@ -284,9 +294,14 @@ def update(
     expected_updated_at: str | None = None,
     reason: str | None = None,
     action: str = "update",
+    begin: bool = True,
+    source_file_id: str | None = None,
+    source_version: str | None = None,
+    suggestion_id: int | None = None,
 ) -> dict[str, tuple[Any, Any]]:
     """Aplica só os campos que mudaram. Devolve {campo: (antes, depois)}; vazio = nada mudou."""
-    conn.execute("BEGIN IMMEDIATE")
+    if begin:
+        conn.execute("BEGIN IMMEDIATE")
     current = get(conn, activity_id)
     if current is None:
         raise KeyError(activity_id)
@@ -313,7 +328,8 @@ def update(
         )
     record_event(conn, activity_id, actor_id, action,
                  {f: b for f, (b, _) in diff.items()}, {f: a for f, (_, a) in diff.items()},
-                 reason=reason, ts=now)
+                 reason=reason, source_file_id=source_file_id, source_version=source_version,
+                 suggestion_id=suggestion_id, ts=now)
     return diff
 
 
