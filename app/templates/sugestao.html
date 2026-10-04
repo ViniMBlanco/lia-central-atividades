@@ -142,7 +142,7 @@
       ({{ s.source_name }}) está indisponível — {{ s.source_status_reason }} Uma proposta não pode virar dado oficial com base
       num documento que não pode ser conferido. Rejeite com o motivo, ou espere o arquivo voltar ao Drive (se voltar, o aceite é liberado).</div>
     {% else %}
-    <form class="formulario cartao" method="post" action="/sugestoes/{{ s.suggestion_id }}/revisao" novalidate>
+    <form class="formulario cartao" method="post" action="/sugestoes/{{ s.suggestion_id }}/revisao" novalidate data-carregando="Salvando…">
       <input type="hidden" name="acao" value="aceitar">
       <h3>Aceitar {% if s.kind == "update" %}(pode ajustar ou desmarcar campos){% else %}(pode ajustar antes de criar){% endif %}</h3>
       {% if s.kind == "update" %}
@@ -186,7 +186,7 @@
     </form>
     {% endif %}
 
-    <form class="formulario cartao" method="post" action="/sugestoes/{{ s.suggestion_id }}/revisao">
+    <form class="formulario cartao" method="post" action="/sugestoes/{{ s.suggestion_id }}/revisao" data-carregando="Salvando…">
       <input type="hidden" name="acao" value="rejeitar">
       <h3>Rejeitar</h3>
       <div class="campo campo-largo">

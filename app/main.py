@@ -15,10 +15,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import ai, activities, analysis, changes, conflicts, db, google_auth, importer, onboarding, suggestions, sync
@@ -266,6 +268,51 @@ def _local_path(target: str | None) -> str:
     if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
         return "/"
     return target
+
+
+# ---------------------------------------------------------------------------
+# Erros: sempre uma página do app (nunca JSON cru), com caminho de volta
+# ---------------------------------------------------------------------------
+
+_NOT_FOUND = ("Página não encontrada", "Este endereço não existe no app. Talvez o link esteja incompleto ou a página tenha mudado de lugar.")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        title, message = _NOT_FOUND
+    elif exc.status_code == 405:
+        title, message = "Ação indisponível", "Este endereço não aceita esse tipo de acesso. Use os botões e links do app."
+    else:
+        title, message = "Não foi possível abrir esta página", str(exc.detail)
+    return render(request, "erro.html", "", status_code=exc.status_code, title=title, message=message)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    # Só parâmetros do endereço são validados pelo FastAPI (ex.: /sugestoes/abc); os formulários têm validação própria.
+    title, message = _NOT_FOUND
+    return render(request, "erro.html", "", status_code=404, title=title, message=message)
+
+
+@app.exception_handler(Exception)
+async def server_error(request: Request, exc: Exception):
+    # Roda fora do middleware de sessão e não toca no banco (que pode ser a causa): página mínima, sem usuário.
+    log.error("Erro inesperado em %s %s", request.method, request.url.path, exc_info=exc)
+    return templates.TemplateResponse(
+        request,
+        "erro.html",
+        {"active": "", "flashes": [], "members": [], "member_names": {}, "me": None, "menu_to_review": 0, "health": None,
+         "title": "Algo deu errado", "server_error": True,
+         "message": "O app encontrou um erro inesperado ao montar esta página. O detalhe técnico ficou no log do servidor."},
+        status_code=500,
+    )
+
+
+@app.get("/saude", include_in_schema=False)
+async def health_check():
+    """Usado pela página para perceber conexão perdida com o app (não consulta o Drive nem o banco)."""
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<div class="cartao">
+  <p>{{ message }}</p>
+  {% if server_error %}
+  <p>As atividades, sugestões e o histórico já salvos não se perdem com este erro: tudo fica no banco local.
+    Se você estava enviando um formulário, confira na tela da atividade se a alteração entrou antes de repetir.</p>
+  {% endif %}
+  <p class="acoes">
+    <a class="botao" href="/">Ir para Comece aqui</a>
+    <a class="botao botao-secundario" href="/atividades">Ver todas as atividades</a>
+    {% if server_error %}<a class="botao botao-secundario" href="/sincronizacao">Ver o estado da sincronização</a>{% endif %}
+  </p>
+</div>
+{% endblock %}

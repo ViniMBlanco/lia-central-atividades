@@ -14,6 +14,8 @@ class _RedactOAuthQuery(logging.Filter):
     _pattern = re.compile(r"(/auth/callback)\?[^\s\"]*")
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if record.args and "/saude" in record.args:
+            return False  # verificação de conexão feita pela página a cada 30 s: só poluiria o log
         if record.args:
             record.args = tuple(
                 self._pattern.sub(r"\1?[omitido]", a) if isinstance(a, str) else a for a in record.args

@@ -164,6 +164,8 @@ Por cima da lista, o botão **Resumir com IA** pede ao Gemini um parágrafo de 2
 - A conferência do parágrafo da IA no resumo pessoal pega datas, IDs e nomes fora dos itens e propostas ditas como fato quando há data; uma frase que exagere sem citar data (ex.: "tudo foi aprovado") não é detectada. Por isso a lista com os links continua sendo a referência, logo abaixo do parágrafo.
 - "Marcar como visto" vale por pessoa de demonstração (não por navegador), porque não há login de verdade. Horários são gravados ao segundo: algo que acontece no mesmo segundo da marcação fica fora do "desde a última visita".
 - A linha do tempo de "Novidades dos documentos" registra renomeação, saída da pasta, volta e falha de leitura a partir da Fase 5; em bancos anteriores, a saída de um arquivo é reconstruída do histórico de sincronizações (e marcada como reconstruída).
+- Acessibilidade conferida por capturas de tela (390 px e 1280 px), cálculo de contraste e revisão do HTML (elementos nativos, rótulos, estado com ícone + texto); **não** houve teste com leitor de tela nem auditoria automática (axe/Lighthouse).
+- O aviso "Sem conexão com o app" aparece na hora quando o navegador perde a rede, mas pode levar até 30 s quando é o app que parou (a página confere o endereço `/saude` a cada 30 s); um envio feito nesse intervalo cai na página de erro do navegador.
 
 ## 9. Antes de usar dados reais
 

@@ -9,7 +9,7 @@
   --fundo: #f5f6fc;
   --linha: #d5d9ec;
   --texto: #14161f;
-  --texto-suave: #4a4f63;   /* 7,6:1 sobre branco */
+  --texto-suave: #4a4f63;   /* 8,1:1 sobre branco; 7,5:1 sobre --fundo */
   --ok-fundo: #e3f4ea;   --ok-texto: #0b5a31;
   --erro-fundo: #fbe5e5; --erro-texto: #9a1418;
   --alerta-fundo: #fff2d6; --alerta-texto: #6b4200;
@@ -109,6 +109,11 @@ main:focus { outline: none; }
 @media (max-width: 760px) {
   h1 { font-size: 1.45rem; }
   .marca-nome { display: none; }
+  /* Menu em duas colunas: os seis destinos cabem na primeira tela sem empurrar o conteúdo */
+  .menu ul { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; }
+  .menu a { padding: .45rem .55rem; font-size: .9rem; min-height: 44px; display: flex; align-items: center; }
+  .selo { white-space: normal; }
+  main { padding-top: 1rem; }
   .pares { grid-template-columns: 1fr; }
   .pares dd { margin-bottom: .5rem; }
   .troca-usuario { width: 100%; }
@@ -244,3 +249,22 @@ fieldset.campo { border: 0; padding: 0; }
 .paragrafo-ia { margin: 0 0 .4rem; padding: .6rem .9rem; border-left: 4px solid var(--ciano); background: var(--branco); max-width: 56rem; font-size: 1.02rem; }
 [aria-busy="true"] .botao { cursor: progress; }
 main > section { margin-bottom: 1.5rem; }
+
+/* Fase 6: conexão perdida, alto contraste, movimento reduzido */
+.aviso-fixo { position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20; margin: 0 auto; max-width: 50rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .25); }
+.aviso-fixo[hidden] { display: none; }
+.selo, .contador-menu { border: 1px solid transparent; }  /* vira borda visível no modo de alto contraste do sistema */
+@media (max-width: 760px) {
+  .filtros { grid-template-columns: 1fr 1fr; }  /* cinco filtros em três linhas: a lista aparece mais cedo */
+  .filtros .campo:nth-of-type(5) { grid-column: 1 / -1; }  /* "Ordenar por" inteiro, sem cortar o texto */
+  .filtros select { padding-left: .45rem; padding-right: .2rem; }
+  .selo { border-radius: 1rem; }
+}
+@media (forced-colors: active) {
+  .menu a[aria-current="page"] { outline: 2px solid; }
+  .historico > li::before, .linha-tempo > li::before { forced-color-adjust: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}

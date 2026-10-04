@@ -59,3 +59,38 @@ def test_login_redireciona_para_o_google_com_state(client, cfg):
     assert "code_challenge=" in loc and "access_type=offline" in loc
     assert cfg.google_client_secret not in loc
 
+
+
+def test_endereco_inexistente_mostra_pagina_do_app(client):
+    for path in ["/nao-existe", "/sugestoes/abc"]:
+        r = client.get(path)
+        assert r.status_code == 404, path
+        assert r.headers["content-type"].startswith("text/html")
+        assert "Página não encontrada" in r.text and "Comece aqui" in r.text
+    r = client.get("/sincronizacao/agora")  # só aceita POST
+    assert r.status_code == 405 and "Ação indisponível" in r.text
+
+
+def test_erro_inesperado_mostra_pagina_sem_detalhe_tecnico(cfg, monkeypatch):
+    monkeypatch.setattr(main, "settings", cfg)
+
+    def quebra(*args, **kwargs):
+        raise RuntimeError("segredo interno")
+
+    monkeypatch.setattr(main.onboarding, "build", quebra)
+    with TestClient(main.app, base_url="http://localhost:8000", raise_server_exceptions=False) as c:
+        r = c.get("/")
+    assert r.status_code == 500
+    assert "Algo deu errado" in r.text and "não se perdem" in r.text
+    assert "segredo interno" not in r.text and "Traceback" not in r.text
+
+
+def test_saude_e_aviso_de_conexao_perdida(client):
+    assert client.get("/saude").status_code == 204
+    r = client.get("/atividades")
+    assert 'id="sem-conexao"' in r.text and "Sem conexão com o app" in r.text
+
+
+def test_formularios_que_gravam_travam_o_segundo_envio(client):
+    r = client.get("/atividades/nova")
+    assert 'data-carregando="Salvando…"' in r.text

@@ -264,3 +264,19 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
   - A mensagem do `.docx` ainda mandava "abrir com Documentos Google", que no teste do caso 2 não converte; passou a "Arquivo → Salvar como Documentos Google".
   - Espaço entre a tabela de frentes e o cartão seguinte; no celular, o nome da frente ocupa a largura do cartão; datas do cabeçalho dos documentos em DD/MM/AAAA.
 - **Testes:** 194 automatizados (31 novos): Comece aqui vindo dos documentos e sem o estado atual, primeira ação de cada pessoa, lacunas, resumo de Ana × Davi, proposta pendente que não aparece como confirmada, marco "marcar como visto", incertezas (conflito, ata sem análise, atividade sem responsável), linha do tempo (renomear, lixeira, voltar, editar, falha), reconstrução em banco antigo, conferência do parágrafo da IA (respostas reais aceitas; data, ID e pessoa inventados e proposta dita como fato descartados), cache do parágrafo e falha da IA.
+
+## 04/10/2026 — Fase 6: celular, teclado e estados de tela
+
+- **Como conferi:** capturas de tela com o Firefox sem interface, em 390 px (celular) e 1280 px, de todas as telas, com o usuário de demonstração escolhido. Um script injetado na cópia da página marcava em vermelho qualquer elemento que passasse da largura da tela e escrevia no topo a largura total da página. Rodei com uma cópia do banco do Drive real e com um banco vazio (sem conta conectada), numa porta separada, sem tocar no app da porta 8000. Contraste calculado pela fórmula da WCAG para todas as combinações de cor do CSS.
+- **O que estava errado e foi corrigido:**
+  - No celular, o selo "2 com prazo em até 7 dias ou bloqueada(s)" do Comece aqui não quebrava linha e fazia a página rolar 7 px para o lado. Os selos passaram a quebrar linha no celular.
+  - Com o banco vazio, o Comece aqui dizia "Nenhuma atividade aberta com Davi" antes de qualquer leitura do Drive — falha de leitura parecendo ausência de atividade (invariante 3). Agora diz que as atividades ainda não foram importadas e aponta o Estado da sincronização.
+  - Endereço inexistente mostrava o JSON cru do FastAPI; `/sugestoes/abc`, um erro de validação em JSON; um erro interno, texto puro. Agora há páginas do app para 404, 405 e 500, com caminho de volta; a de 500 não mostra detalhe técnico (fica no log) e lembra que os dados salvos não se perdem.
+  - Criar atividade, editar, mudar estado, aceitar/rejeitar sugestão e decidir conflito não travavam o segundo clique: um duplo clique em "Criar" poderia criar duas atividades. Todo formulário que grava passou a travar o envio repetido (e destrava ao voltar pelo navegador).
+  - Conexão perdida não tinha tratamento: aviso fixo "Sem conexão com o app" quando o navegador perde a rede ou quando a página não alcança o app (verificação a cada 30 s em `/saude`); enquanto o aviso está na tela, nada é enviado.
+  - Formulário com erro: o resumo dos erros já existia com links para os campos, mas não recebia o foco; agora recebe, e o leitor de tela o lê primeiro.
+  - Menu e filtros ocupavam quase uma tela inteira no celular antes da lista; passaram a duas colunas.
+  - No modo de alto contraste do sistema, os selos perdiam o fundo e viravam texto solto: ganharam borda.
+- **Conferido e mantido:** contraste de todos os textos ≥ 6,99:1 (o enunciado pede 4,5:1); ciano só como acento ou com texto preto (11,6:1); estado sempre com ícone + texto; link "Pular para o conteúdo"; foco visível em todos os elementos (contorno azul de 3 px; ciano dentro do topo azul); alvos de toque com 44 px nos botões e campos.
+- **Não feito:** teste com leitor de tela e auditoria automática (axe/Lighthouse) — registrados como limitação no README.
+- **Testes:** 198 automatizados (4 novos: páginas 404/405, erro interno sem detalhe técnico, `/saude` com o aviso de conexão, trava de envio no formulário de criação).

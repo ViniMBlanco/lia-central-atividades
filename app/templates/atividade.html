@@ -61,7 +61,7 @@
 <section class="cartao" aria-labelledby="t-estado">
   <h2 id="t-estado">Mudar estado</h2>
   {% if not me %}<p class="discreto">Escolha no topo da página quem você é: a mudança fica registrada com o seu nome.</p>{% endif %}
-  <form class="form-estado" method="post" action="/atividades/{{ a.activity_id }}/estado">
+  <form class="form-estado" method="post" action="/atividades/{{ a.activity_id }}/estado" data-carregando="Salvando…">
     <div class="campo">
       <label for="novo-estado">Novo estado</label>
       <select id="novo-estado" name="status">

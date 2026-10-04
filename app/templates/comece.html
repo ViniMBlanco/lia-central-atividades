@@ -42,10 +42,15 @@
   <p>Nenhuma atividade aberta com {{ me.display_name }} como responsável. Como revisor(a), há
     <strong>{{ action.to_review }} sugestão(ões)</strong> esperando você: <a href="/sugestoes">abrir Sugestões para revisar</a>.</p>
   {% else %}
+  {% if not register.imported %}
+  <p class="vazio">As atividades ainda não foram importadas do Drive, então ainda não dá para saber o que é de {{ me.display_name }}.
+    Veja o <a href="/sincronizacao">Estado da sincronização</a>.</p>
+  {% else %}
   <p class="vazio">Nenhuma atividade aberta com {{ me.display_name }} como responsável no registro.
     {% if action.unowned_in_front %}Na frente {{ me.front }} há {{ action.unowned_in_front | length }} atividade(s) com responsável a confirmar:
     {% for u in action.unowned_in_front %}<a href="/atividades/{{ u.activity_id }}">{{ u.activity_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
     {% endif %}Veja <a href="/atividades">Todas as atividades</a>.</p>
+  {% endif %}
   {% endif %}
 
   <ul class="contagens resumo" aria-label="Resumo de {{ me.display_name }}">

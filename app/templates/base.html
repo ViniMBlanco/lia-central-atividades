@@ -59,15 +59,58 @@
     {% block content %}{% endblock %}
   </main>
 
+  <div id="sem-conexao" class="aviso aviso-erro aviso-fixo" role="alert" tabindex="-1" hidden>
+    <strong>Sem conexão com o app.</strong> O que está na tela é o último estado carregado e pode estar desatualizado;
+    nada que você enviar agora será salvo. Quando a conexão voltar, este aviso some sozinho.
+  </div>
+
   <script>
-    // Ações demoradas (Drive, IA): o botão mostra que está trabalhando e não aceita um segundo clique.
-    document.addEventListener("submit", function (event) {
-      var form = event.target, message = form.getAttribute("data-carregando");
-      var button = message && form.querySelector("button[type=submit]");
-      if (!button) return;
-      setTimeout(function () { button.disabled = true; button.textContent = message; }, 0);
-      form.setAttribute("aria-busy", "true");
-    });
+    (function () {
+      // Formulários que gravam ou demoram (Drive, IA): o botão mostra que está trabalhando e não aceita um
+      // segundo clique (evita, por exemplo, criar a mesma atividade duas vezes).
+      document.addEventListener("submit", function (event) {
+        var form = event.target, message = form.getAttribute("data-carregando");
+        if (!message || event.defaultPrevented) return;
+        var clicked = event.submitter || form.querySelector("button[type=submit]");
+        var buttons = form.querySelectorAll("button[type=submit]");
+        setTimeout(function () {
+          buttons.forEach(function (b) { b.disabled = true; });
+          if (clicked) { clicked.dataset.rotulo = clicked.textContent; clicked.textContent = message; }
+        }, 0);
+        form.setAttribute("aria-busy", "true");
+      });
+      // Voltar pelo navegador reabre a página do cache com o botão travado: destrava.
+      window.addEventListener("pageshow", function (event) {
+        if (!event.persisted) return;
+        document.querySelectorAll("form[aria-busy]").forEach(function (form) {
+          form.removeAttribute("aria-busy");
+          form.querySelectorAll("button[type=submit]").forEach(function (b) {
+            b.disabled = false;
+            if (b.dataset.rotulo) { b.textContent = b.dataset.rotulo; delete b.dataset.rotulo; }
+          });
+        });
+      });
+
+      // Formulário com erro: o foco vai para o resumo, que o leitor de tela lê e que tem links para cada campo.
+      var resumo = document.getElementById("resumo-erros");
+      if (resumo) resumo.focus();
+
+      // Conexão perdida (sem rede ou o app parou): aviso fixo e nada é enviado até voltar.
+      var aviso = document.getElementById("sem-conexao"), online = navigator.onLine;
+      function marcar(ok) { online = ok; aviso.hidden = ok; }
+      function conferir() {
+        if (document.hidden) return;
+        fetch("/saude", { cache: "no-store" }).then(function (r) { marcar(r.ok); }, function () { marcar(false); });
+      }
+      window.addEventListener("offline", function () { marcar(false); });
+      window.addEventListener("online", conferir);
+      document.addEventListener("visibilitychange", conferir);
+      setInterval(conferir, 30000);
+      if (!online) marcar(false);
+      document.addEventListener("submit", function (event) {
+        if (!online) { event.preventDefault(); aviso.hidden = false; aviso.focus(); }
+      }, true);
+    })();
   </script>
   <footer class="rodape">
     <p>Protótipo do case técnico da Liga IA UFSCar · dados fictícios · horários em Brasília (America/Sao_Paulo)</p>

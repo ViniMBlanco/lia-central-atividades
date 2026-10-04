@@ -114,7 +114,7 @@
       {% elif c.status == "superado" %}
       <p class="discreto">Encerrado sem decisão em {{ c.closed_at | dt }}: a situação deixou de existir na pasta (arquivo removido, movido, alterado ou INDEX corrigido).</p>
       {% elif can_decide and c.kind == "troca_de_fonte" %}
-      <form class="form-decisao" method="post" action="/conflitos/{{ c.conflict_id }}/decisao">
+      <form class="form-decisao" method="post" action="/conflitos/{{ c.conflict_id }}/decisao" data-carregando="Registrando…">
         <div class="campo campo-largo">
           <label for="decisao-{{ c.conflict_id }}">Motivo da decisão</label>
           <textarea id="decisao-{{ c.conflict_id }}" name="resolution" rows="2" maxlength="500" required
@@ -132,7 +132,7 @@
         </div>
       </form>
       {% elif can_decide %}
-      <form class="form-decisao" method="post" action="/conflitos/{{ c.conflict_id }}/decisao">
+      <form class="form-decisao" method="post" action="/conflitos/{{ c.conflict_id }}/decisao" data-carregando="Registrando…">
         <div class="campo campo-largo">
           <label for="decisao-{{ c.conflict_id }}">Decisão e motivo</label>
           <textarea id="decisao-{{ c.conflict_id }}" name="resolution" rows="2" maxlength="500" required

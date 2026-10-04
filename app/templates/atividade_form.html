@@ -34,7 +34,7 @@
 <div class="aviso aviso-alerta" role="status">Escolha no topo da página quem você é: {% if mode == "editar" %}a alteração{% else %}a criação{% endif %} fica registrada com o seu nome.</div>
 {% endif %}
 
-<form class="formulario cartao" method="post" novalidate
+<form class="formulario cartao" method="post" novalidate data-carregando="Salvando…"
       action="{% if mode == 'editar' %}/atividades/{{ a.activity_id }}/editar{% else %}/atividades/nova{% endif %}">
   {% if mode == "editar" %}<input type="hidden" name="updated_at" value="{{ updated_at }}">{% endif %}
 
