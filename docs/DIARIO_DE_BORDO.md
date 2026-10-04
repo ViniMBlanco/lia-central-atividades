@@ -313,8 +313,16 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
 - **Escopo da pasta visível no produto:** o FAQ do enunciado pede que a restrição da pasta monitorada apareça "no produto e no README". A tela de sincronização dizia só "e subpastas"; passou a dizer que só aquela pasta e as subpastas são lidas, mesmo que a conta tenha acesso a outros arquivos (com teste).
 - **Instalação do zero:** copiei para uma pasta temporária só os arquivos versionados e segui o README: ambiente virtual e `pip install` sem erro; `.env` copiado do exemplo, sem preencher; 198 testes passaram e 1 foi pulado (o do login, que precisa do cliente OAuth); o app subiu, as seis telas responderam, um endereço inexistente deu a página 404 do app e a tela de sincronização listou as variáveis que faltam (só os nomes). O README passou a dizer que, sem credenciais, um teste é pulado.
 - **Antes de tornar o repositório público:** procurei em todos os commits e nos arquivos atuais os valores do `.env` (sem imprimi-los), meu e-mail pessoal e o telefone de contato do processo: nada encontrado; todos os commits usam o e-mail noreply do GitHub.
-- **Registro de validação:** ganhou um mapa de onde estão os casos pedidos (conflito, dado ausente, arquivo adicionado e os dez critérios da especificação). O caso 3 (edição de conteúdo de uma ata) foi conferido só por teste automatizado; no Drive real, as mudanças em arquivos conhecidos foram renomear, mandar para a lixeira e restaurar.
+- **Registro de validação:** ganhou um mapa de onde estão os casos pedidos (conflito, dado ausente, arquivo adicionado e os dez critérios da especificação). Faltava o caso 3 (edição de conteúdo) no Drive real; foi feito em seguida (abaixo).
 - **Testes:** 199 automatizados.
+
+
+## 04/10/2026 — Edição de ata no Drive real (caso 3) e o erro 503 do Gemini
+
+- **Teste:** com o app rodando e sem clicar em nada, troquei no Google Doc da ata de 03/10 o prazo `2026-10-07` por `2026-10-08` (a sugestão anterior já tinha sido aceita pelo Bruno). A leitura automática das 16:37 ainda recebeu do Drive a versão antiga; a das 16:42 registrou a versão nova da **mesma** fonte, cerca de 9 minutos depois da edição. Mudei o README de "até ~5 minutos" para "5 a 10 minutos": o ciclo é de 5, mas a API do Drive pode levar alguns minutos para refletir uma edição de Google Doc. Continua dentro dos 15 do enunciado.
+- **A IA falhou e se recuperou sozinha:** a primeira análise da versão nova terminou em "Gemini indisponível (HTTP 503)"; a tentativa automática da sincronização seguinte deu certo. Resultado: uma sugestão só com o prazo (07/10 → 08/10), o trecho literal, uma incerteza sobre o prazo antigo citado na ata e o alerta de que o prazo atual foi decidido no app pelo Bruno. O ACT-101 continuou com 07/10 até a revisão.
+- **Por que o 503 aparece tanto:** a documentação do Gemini define 503 como "The service is temporarily overloaded or down" e recomenda esperar e repetir com espera crescente — é o que o app faz. A documentação não diz por que acontece com frequência nem se a camada gratuita tem menos prioridade; no banco real, 2 das 6 análises pegaram 503, e as duas se recuperaram na tentativa seguinte.
+- **Pergunta que fiz: por que, quando a IA falha, o app não usa as regras sem IA?** Conferimos no código que a escolha é só pela configuração (com chave → Gemini; sem chave → regras). Mantive assim: as regras só entendem o formato do pacote, e numa ata de texto livre dariam "0 sugestões"; gravar isso como análise concluída transformaria falha em ausência e impediria o Gemini de ler aquela versão depois. Ficou explicado no README (seção 9). Um modelo reserva para o caso de 503 ficou como próximo passo.
 
 ## O que ficou de fora, limitações e próximos passos
 
@@ -334,6 +342,7 @@ As limitações conhecidas estão reunidas no README (seção 10).
 4. PDF com texto selecionável.
 5. Teste com leitor de tela e auditoria automática (axe).
 6. API de mudanças do Drive, se o acervo crescer.
+7. Modelo reserva quando o Gemini responde 503 (ex.: `gemini-3.5-flash`, que acertou as atas do pacote), registrado como outro gerador na análise.
 
 **O que levo do processo**
 - Exigir arquivo e trecho para toda afirmação sobre o material pegou erros do assistente várias vezes (tabela no início deste diário).
