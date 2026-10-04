@@ -87,7 +87,20 @@
   {% if page.purpose %}
   {% if page.purpose_provisional %}
   <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Provisório: a confirmar</span>
-    {% if page.state.meta.responsavel_por_confirmar %}<span class="discreto">Confirmação com {{ page.state.meta.responsavel_por_confirmar }}.</span>{% endif %}</p>
+  </p>
+  {% set quem = page.state.meta.responsavel_por_confirmar %}
+  {% set doc = page.state.source %}
+  {% set doc_link -%}
+    {%- if doc.web_url %}<a href="{{ doc.web_url }}" target="_blank" rel="noopener">{{ doc.name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ doc.name }}{% endif -%}
+  {%- endset %}
+  {% if quem and me and me.display_name | lower == quem | lower %}
+  <p class="discreto"><strong>Você é quem confirma.</strong> Para isso, edite o {{ doc_link }} no Drive: o app não altera documentos.
+    Quando o texto deixar de dizer que é provisório, este selo some na próxima sincronização.</p>
+  {% else %}
+  <p class="discreto">{% if quem %}<strong>Quem confirma:</strong> {{ quem }} (campo <code>responsavel_por_confirmar</code> do {{ doc_link }}).
+    {% endif %}A confirmação é feita no próprio documento, no Drive, e não no app: quando ele deixar de dizer que é provisório,
+    este selo some na próxima sincronização.</p>
+  {% endif %}
   {% endif %}
   <blockquote class="citacao">
     <p>{{ page.purpose.text | md_inline(page.links) }}</p>

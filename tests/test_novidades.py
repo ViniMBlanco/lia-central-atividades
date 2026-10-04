@@ -71,7 +71,10 @@ def test_comece_aqui_vem_dos_documentos_com_lacunas_marcadas(web):
     t = r.text
     # Propósito copiado do ESTADO-ATUAL, marcado como provisório (status: parcial), com quem confirma.
     assert "Esta organização fictícia treina pessoas para aplicar IA a problemas reais." in t
-    assert "Provisório: a confirmar" in t and "Confirmação com Bruno" in t
+    assert "Provisório: a confirmar" in t
+    # Quem confirma e onde: no documento, no Drive (o app não altera documentos nem tem botão de confirmar).
+    assert "<strong>Quem confirma:</strong> Bruno" in t and "no próprio documento, no Drive, e não no app" in t
+    assert "quem confirma é Bruno, editando o documento no Drive" in t
     # Frentes: o que fazem (ESTADO-ATUAL) e pessoas/papéis (GUIA), com link para os originais.
     for trecho in ["Growth prepara e publica conteúdos aprovados pelo líder da frente.",
                    "Bruno é líder da frente e aprova posts antes de publicação.",
@@ -88,6 +91,15 @@ def test_comece_aqui_vem_dos_documentos_com_lacunas_marcadas(web):
     assert "descrição provisória" in lacunas
     # Nada da missão real da Liga (00_Comece_aqui) nem texto inventado.
     assert "missão oficial" not in t.lower()
+
+
+def test_comece_aqui_diz_ao_bruno_que_ele_confirma_no_drive(web):
+    como(web, "U-B")
+    t = web.get("/").text
+    assert "Você é quem confirma." in t and "no Drive: o app não altera documentos" in t
+    assert "<strong>Quem confirma:</strong>" not in t
+    como(web, "U-A")
+    assert "Você é quem confirma." not in web.get("/").text
 
 
 def test_comece_aqui_sem_estado_atual_nao_inventa_proposito(cfg, drive, monkeypatch):

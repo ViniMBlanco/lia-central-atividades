@@ -49,6 +49,9 @@
       {% else %}
         Não configurada.
       {% endif %}
+      {% if folder_configured %}
+      <br><span class="discreto">Só esta pasta e as subpastas dela são lidas. Arquivos fora dela não entram no app, mesmo que a conta conectada tenha acesso a eles.</span>
+      {% endif %}
     </dd>
     <dt>Última sincronização concluída</dt>
     <dd>{% if state and state.last_success_at %}{{ state.last_success_at | dt }} <span class="discreto">({{ state.last_success_at | ago }})</span>{% else %}Nunca{% endif %}</dd>

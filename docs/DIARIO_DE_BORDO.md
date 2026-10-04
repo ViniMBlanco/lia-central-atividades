@@ -4,6 +4,25 @@ Registro de como o trabalho foi feito: decisões, mudanças de direção, dificu
 
 **Ferramenta de IA usada para construir:** Claude Code (plano Claude Pro), para leitura e análise do material, planejamento e programação em par. As conversas completas não estão aqui, só o que foi relevante.
 
+## Como ler este diário
+
+As entradas estão em ordem de data. Para quem tem pouco tempo:
+
+- **Decisões que mudei depois de verificar que uma saída do modelo estava incorreta** (o enunciado pede uma; registrei todas):
+
+  | Data | Saída do modelo | Como conferi | O que mudou |
+  |---|---|---|---|
+  | 29/09 | Claude Code: "Operações não tem revisor" | Pedi arquivo e trecho; nenhum texto diz isso | Bruno revisa todas as frentes; Carla, só a Formação |
+  | 29/09 | Claude Code: a ata de 04/10 seria atualização do ACT-103 | Pedi o raciocínio completo e comparei com a ata | Criar tarefa nova, com dica de relação com o ACT-103 |
+  | 03/10 | Claude Code: atividades criadas no app com ID `LIA-001` | Busca no material: `LIA-` não existe; `ACT-*` é o padrão | IDs `ACT-*` continuando a numeração |
+  | 03/10 | Claude Code: planilha só vira conflito pelo cabeçalho | Reli o R10, a especificação (§3) e o `LEIA_CONFLITO.md`: o critério é o **nome parecido** | Conflito por nome parecido **ou** cabeçalho |
+  | 04/10 | Gemini `3.5-flash-lite` (no produto): a ata de 04/10 como "atualizar ACT-103" | Conferência das respostas contra o gabarito das três atas | Abandonei esse modelo como plano B; alerta para atualização cujo trecho não cita o ID; depois, comparação de modelos e troca para o `gemini-3.6-flash` |
+  | 04/10 | Gemini `3.6-flash` (no produto): "Fique **atenta**" para a Ana | Leitura dos parágrafos gerados: o gênero foi deduzido do nome | Regra de linguagem neutra no pedido e conferência automática do parágrafo |
+
+- **Fonte oficial e revisores:** 03/10, "Decisões: fonte oficial e revisores".
+- **Testes e resultados:** no fim de cada fase e em [`VALIDACAO.md`](VALIDACAO.md).
+- **O que ficou de fora e próximos passos:** última seção.
+
 ---
 
 ## 28/09/2026 — Leitura do material e árvore de questões
@@ -280,3 +299,43 @@ Lição: toda afirmação sobre o material precisa vir com arquivo e trecho. Pas
 - **Conferido e mantido:** contraste de todos os textos ≥ 6,99:1 (o enunciado pede 4,5:1); ciano só como acento ou com texto preto (11,6:1); estado sempre com ícone + texto; link "Pular para o conteúdo"; foco visível em todos os elementos (contorno azul de 3 px; ciano dentro do topo azul); alvos de toque com 44 px nos botões e campos.
 - **Não feito:** teste com leitor de tela e auditoria automática (axe/Lighthouse) — registrados como limitação no README.
 - **Testes:** 198 automatizados (4 novos: páginas 404/405, erro interno sem detalhe técnico, `/saude` com o aviso de conexão, trava de envio no formulário de criação).
+
+## 04/10/2026 — Quem confirma o propósito, e onde
+
+- **O que notei explorando o app:** o Comece aqui mostrava o propósito com "Provisório: a confirmar · Confirmação com Bruno.", mas não havia onde o Bruno confirmar. Pedi a análise antes de decidir.
+- **Decisão (minha):** não criar botão de confirmar no app; deixar claro que a confirmação acontece no documento. Motivos: o propósito pertence ao `ESTADO-ATUAL.md`, e a especificação diz que o Drive é o repositório dos documentos (§1) e que o Comece aqui só deve marcar o que está "a confirmar", sem produzir missão oficial (§5 F); a precedência do `INDEX` dá peso à "decisão humana aprovada na aplicação **sobre a atividade**", não a textos institucionais; e o app só lê o Drive. Uma confirmação dentro do app deixaria o banco dizendo "oficial" e o documento dizendo "provisória": duas verdades.
+- **Mudança:** "Quem confirma: Bruno (campo `responsavel_por_confirmar` do ESTADO-ATUAL.md). A confirmação é feita no próprio documento, no Drive, e não no app: quando ele deixar de dizer que é provisório, este selo some na próxima sincronização." Para o Bruno: "Você é quem confirma. Para isso, edite o ESTADO-ATUAL.md no Drive: o app não altera documentos." A lacuna em "O que ainda está a confirmar" diz o mesmo. 199 testes (1 novo).
+
+## 04/10/2026 — Fase 7: documentação, validação e preparação da entrega
+
+- **README completo:** arquitetura em linguagem simples (com o caminho de um arquivo do Drive até a tela e as oito regras que nunca quebram), pessoas e permissões, credenciais e pasta do Drive passo a passo, um roteiro de teste com os dados do pacote e o resultado esperado em cada passo, limitações reunidas por assunto, o que falta antes de usar dados reais (login, permissões por pessoa, verificação do app no Google, IA paga, retenção), o que fica guardado no computador e como apagar, e as ferramentas de IA usadas para construir e dentro do produto.
+- **Conferência do README contra o código:** cada frase que cita a interface foi comparada com o texto real das telas. Três estavam diferentes e foram corrigidas no README: o cartão da fonte diz "Em vigor" (e não "importada"), o `.docx` aparece como "Ignorado" com a instrução de conversão, e o Comece aqui vazio diz "Nenhum documento foi lido do Drive ainda".
+- **Escopo da pasta visível no produto:** o FAQ do enunciado pede que a restrição da pasta monitorada apareça "no produto e no README". A tela de sincronização dizia só "e subpastas"; passou a dizer que só aquela pasta e as subpastas são lidas, mesmo que a conta tenha acesso a outros arquivos (com teste).
+- **Instalação do zero:** copiei para uma pasta temporária só os arquivos versionados e segui o README: ambiente virtual e `pip install` sem erro; `.env` copiado do exemplo, sem preencher; 198 testes passaram e 1 foi pulado (o do login, que precisa do cliente OAuth); o app subiu, as seis telas responderam, um endereço inexistente deu a página 404 do app e a tela de sincronização listou as variáveis que faltam (só os nomes). O README passou a dizer que, sem credenciais, um teste é pulado.
+- **Antes de tornar o repositório público:** procurei em todos os commits e nos arquivos atuais os valores do `.env` (sem imprimi-los), meu e-mail pessoal e o telefone de contato do processo: nada encontrado; todos os commits usam o e-mail noreply do GitHub.
+- **Registro de validação:** ganhou um mapa de onde estão os casos pedidos (conflito, dado ausente, arquivo adicionado e os dez critérios da especificação). O caso 3 (edição de conteúdo de uma ata) foi conferido só por teste automatizado; no Drive real, as mudanças em arquivos conhecidos foram renomear, mandar para a lixeira e restaurar.
+- **Testes:** 199 automatizados.
+
+## O que ficou de fora, limitações e próximos passos
+
+**Ficou de fora, e por quê**
+- **PDF com texto selecionável** (diferencial): priorizei os fluxos centrais (Drive, atividades, IA com revisão), que valem a maior parte da avaliação.
+- **Claude como provedor alternativo da IA no produto** (previsto em 29/09): sem chave da API da Anthropic, não teria como testar; o Gemini gratuito também é o que a banca consegue usar sem pagar.
+- **API de mudanças do Drive e notificações:** a varredura a cada 5 minutos cumpre o prazo de 15 minutos com folga numa pasta pequena.
+- **Login real e permissões por pessoa:** o case aceita troca de usuário de demonstração; o caminho para produção está no README (seção 11).
+- **Limpeza automática do texto de arquivos que saíram da pasta**, teste com leitor de tela e auditoria automática de acessibilidade, e "aceitar" nos conflitos de planilha parecida ou de fonte ambígua.
+
+As limitações conhecidas estão reunidas no README (seção 10).
+
+**Próximos passos, em ordem**
+1. Login com a conta Google de cada membro e filtro de todas as telas (e do que vai para a IA) pelas permissões de cada arquivo no Drive — é o que impede usar dados reais hoje.
+2. Retenção e limpeza do conteúdo guardado (fontes indisponíveis, acesso revogado).
+3. Mais atas de teste com texto livre ("até sexta", pessoa desconhecida, duas decisões no mesmo parágrafo), gravando as respostas do modelo real, como já foi feito com as três atas do pacote.
+4. PDF com texto selecionável.
+5. Teste com leitor de tela e auditoria automática (axe).
+6. API de mudanças do Drive, se o acervo crescer.
+
+**O que levo do processo**
+- Exigir arquivo e trecho para toda afirmação sobre o material pegou erros do assistente várias vezes (tabela no início deste diário).
+- O Drive real achou falhas que os testes com o Drive falso não pegavam: a sugestão de uma ata que foi para a lixeira continuava aceitável, e o Google Doc convertido do `.docx` exporta o cabeçalho de página antes do título.
+- O erro do modelo mais barato foi justamente no caso mais sutil (tarefa nova × atualização de uma tarefa existente). A validação conferia trecho, ID e data, mas não teria pego esse erro sozinha: por isso entrou o alerta para atualização sem ID no trecho, e a decisão final continua com uma pessoa.

@@ -177,7 +177,7 @@ def build(conn: sqlite3.Connection, folder_id: str, today: date) -> dict[str, An
         who = state.meta.get("responsavel_por_confirmar")
         gaps.append({"text": f"Propósito: o próprio {state.source['name']} diz que é uma descrição provisória"
                              + (f" (status: {state.status})" if state.status else "")
-                             + (f"; confirmação com {who}" if who else "") + "."})
+                             + (f"; quem confirma é {who}, editando o documento no Drive" if who else "") + "."})
 
     # Frentes: das pessoas cadastradas, das atividades e do guia; descrição e papéis copiados dos documentos,
     # na ordem em que o estado atual as cita.

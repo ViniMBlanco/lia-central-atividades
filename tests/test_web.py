@@ -39,6 +39,7 @@ def test_tela_mostra_arquivos_com_link_e_estado(client, cfg, drive):
     sync.run_sync(cfg, "manual", client_factory=lambda: drive)
     r = client.get("/sincronizacao")
     assert "https://drive/ROOT" in r.text  # pasta conectada com link
+    assert "Só esta pasta e as subpastas dela são lidas" in r.text  # escopo visível (FAQ do enunciado)
     assert 'href="https://drive/f1"' in r.text
     assert "Processado" in r.text and "Ignorado" in r.text
     assert cfg.google_client_secret not in r.text or not cfg.google_client_secret
