@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import secrets
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
@@ -17,11 +18,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import activities, analysis, conflicts, db, google_auth, importer, suggestions, sync
+from . import ai, activities, analysis, changes, conflicts, db, google_auth, importer, onboarding, suggestions, sync
 from .activities import DUE_FILTERS, FIELD_LABELS, ORDERS, PRIORITIES, STATUSES, StaleEdit
-from .authority import AUTHORITY_LABELS
+from .authority import AUTHORITY_LABELS, normalize
 from .config import Settings, settings
 
 log = logging.getLogger(__name__)
@@ -103,11 +105,35 @@ def fmt_ago(value: str | None) -> str:
     return f"há {seconds // 86400} dia(s)"
 
 
+_INLINE = re.compile(r"`([^`\n]+)`|\*\*([^*\n]+)\*\*")
+
+
+def md_inline(text: str | None, links: dict[str, str] | None = None) -> Markup:
+    """Trecho de documento como está, com `código` e **negrito**; nome de arquivo citado vira link para o Drive.
+
+    Todo o texto é escapado: um documento nunca injeta HTML na página.
+    """
+    text, out, pos = text or "", [], 0
+    for m in _INLINE.finditer(text):
+        out.append(escape(text[pos:m.start()]))
+        if m.group(1) is not None:
+            code = Markup("<code>{}</code>").format(m.group(1))
+            url = (links or {}).get(normalize(m.group(1)))
+            out.append(Markup('<a href="{}" target="_blank" rel="noopener">{}<span class="sr"> (abre no Google Drive em nova aba)</span></a>')
+                       .format(url, code) if url else code)
+        else:
+            out.append(Markup("<strong>{}</strong>").format(m.group(2)))
+        pos = m.end()
+    out.append(escape(text[pos:]))
+    return Markup("").join(out)
+
+
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.filters["dt"] = fmt_dt
 templates.env.filters["ago"] = fmt_ago
 templates.env.filters["data"] = fmt_date
 templates.env.filters["campo"] = fmt_field
+templates.env.filters["md_inline"] = md_inline
 templates.env.globals.update(
     KIND_LABELS=KIND_LABELS,
     STATUS_LABELS=STATUS_LABELS,
@@ -243,26 +269,99 @@ def _local_path(target: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Páginas
+# Comece aqui e Novidades dos documentos
 # ---------------------------------------------------------------------------
 
-PLACEHOLDERS = {
-    "/": ("comece", "Comece aqui"),
-    "/novidades": ("novidades", "Novidades dos documentos"),
-}
+
+@app.get("/", response_class=HTMLResponse)
+async def start_here(request: Request):
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        page = onboarding.build(conn, settings.drive_folder_id, today())
+        action = onboarding.first_action(conn, me, today())
+        register = _register_info(conn)
+        news = None
+        if me:
+            period = changes.resolve_period(conn, me, None)
+            news = {"period": period, **changes.counts(changes.personal(conn, me, period, today(), _sync_health(conn)))}
+    return render(request, "comece.html", "comece", title="Comece aqui", page=page, action=action,
+                  register=register, news=news)
 
 
-def _placeholder(path: str):
-    key, title = PLACEHOLDERS[path]
+def _personal_with_facts(conn: sqlite3.Connection, me: sqlite3.Row, desde: str | None):
+    """Resumo pessoal, os fatos que a IA pode usar e o parágrafo já gerado para esses mesmos fatos (se houver)."""
+    period = changes.resolve_period(conn, me, desde)
+    mine = changes.personal(conn, me, period, today(), _sync_health(conn))
+    names = {r["member_id"]: r["display_name"] for r in conn.execute("SELECT member_id, display_name FROM members")}
+    facts = changes.facts(mine, lambda v, f: fmt_field(v, f, names), fmt_dt, today())
+    h = changes.facts_hash(facts)
+    return period, mine, facts, h, changes.get_summary(conn, me["member_id"], h), list(names.values())
 
-    async def page(request: Request):
-        return render(request, "placeholder.html", key, title=title)
 
-    return page
+@app.get("/novidades", response_class=HTMLResponse)
+async def news_page(request: Request, desde: str = ""):
+    mine = summary = None
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        if me:
+            period, mine, _, _, summary, _ = _personal_with_facts(conn, me, desde or None)
+        else:
+            period = changes.resolve_period(conn, None, desde or None)
+        feed = changes.document_feed(conn, period.since)
+    return render(request, "novidades.html", "novidades", title="Novidades dos documentos", period=period,
+                  mine=mine, headline=changes.headline(mine, fmt_dt) if mine else [], feed=feed,
+                  PERIODS=changes.PERIODS, summary=summary,
+                  summary_notes=json.loads(summary["notes"]) if summary else [],
+                  can_summarize=ai.summarizer_for(settings) is not None)
 
 
-for _path in PLACEHOLDERS:
-    app.add_api_route(_path, _placeholder(_path), methods=["GET"], response_class=HTMLResponse)
+@app.post("/novidades/resumo-ia")
+async def news_summary(request: Request):
+    """Parágrafo da IA a partir dos itens do resumo pessoal. Mesmos itens = mesmo parágrafo (não pede de novo)."""
+    form = await request.form()
+    desde = str(form.get("desde") or "") or None
+    summarizer = ai.summarizer_for(settings)
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        if me is None:
+            _flash(request, "Escolha no topo da página quem você é antes de pedir o resumo.", "erro")
+            return RedirectResponse("/novidades", status_code=303)
+        period, _, facts, h, cached, names = _personal_with_facts(conn, me, desde)
+    target = f"/novidades?desde={period.key}#resumo-ia"
+    if summarizer is None:
+        _flash(request, "Não há IA configurada (GEMINI_API_KEY vazio): o resumo é a lista desta página.", "info")
+        return RedirectResponse(target, status_code=303)
+    if cached is not None and cached["status"] != "falhou":
+        _flash(request, "Os itens não mudaram desde o último parágrafo: nada foi pedido de novo à IA.", "info")
+        return RedirectResponse(target, status_code=303)
+    try:
+        raw = await asyncio.to_thread(summarizer.summarize, facts)
+    except ai.AIError as exc:
+        with db.session(settings.database_path) as conn:
+            changes.save_summary(conn, me["member_id"], h, "falhou", None, [str(exc)], summarizer.label)
+        _flash(request, f"A IA não escreveu o resumo: {exc} A lista desta página continua completa.", "erro")
+        return RedirectResponse(target, status_code=303)
+    text = " ".join(str(raw.items[0].get("resumo") or "").split())
+    problems = changes.check_summary(text, facts, names)
+    with db.session(settings.database_path) as conn:
+        changes.save_summary(conn, me["member_id"], h, "descartado" if problems else "ok", text, problems,
+                             summarizer.label, raw)
+    if problems:
+        _flash(request, "O parágrafo escrito pela IA foi descartado na conferência automática; use a lista desta página.", "alerta")
+    return RedirectResponse(target, status_code=303)
+
+
+@app.post("/novidades/visto")
+async def mark_seen(request: Request):
+    with db.session(settings.database_path) as conn:
+        me = _me(request, conn)
+        if me is None:
+            _flash(request, "Escolha no topo da página quem você é antes de marcar como visto.", "erro")
+            return RedirectResponse("/novidades", status_code=303)
+        when = changes.mark_visit(conn, me["member_id"])
+    _flash(request, f"Visita marcada em {fmt_dt(when)}. A partir de agora, “O que mudou para {me['display_name']}” "
+                    "mostra só o que acontecer depois disso. Nenhum dado foi alterado.", "ok")
+    return RedirectResponse("/novidades?desde=marca#para-mim", status_code=303)
 
 
 # ---------------------------------------------------------------------------

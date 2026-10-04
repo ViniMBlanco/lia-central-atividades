@@ -59,6 +59,16 @@
     {% block content %}{% endblock %}
   </main>
 
+  <script>
+    // Ações demoradas (Drive, IA): o botão mostra que está trabalhando e não aceita um segundo clique.
+    document.addEventListener("submit", function (event) {
+      var form = event.target, message = form.getAttribute("data-carregando");
+      var button = message && form.querySelector("button[type=submit]");
+      if (!button) return;
+      setTimeout(function () { button.disabled = true; button.textContent = message; }, 0);
+      form.setAttribute("aria-busy", "true");
+    });
+  </script>
   <footer class="rodape">
     <p>Protótipo do case técnico da Liga IA UFSCar · dados fictícios · horários em Brasília (America/Sao_Paulo)</p>
   </footer>

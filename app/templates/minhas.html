@@ -16,7 +16,8 @@
   </form>
 </div>
 {% else %}
-<p class="intro">Atividades não concluídas em que <strong>{{ me.display_name }}</strong> é responsável, inclusive as compartilhadas com outra pessoa.</p>
+<p class="intro">Atividades não concluídas em que <strong>{{ me.display_name }}</strong> é responsável, inclusive as compartilhadas com outra pessoa.
+  <a href="/novidades#para-mim">Ver o que mudou para {{ me.display_name }}</a>.</p>
 
 {% if rows %}
 <ul class="contagens resumo" aria-label="Resumo">

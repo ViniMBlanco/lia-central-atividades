@@ -61,7 +61,7 @@
   </dl>
   <div class="acoes">
     {% if connected %}
-      <form method="post" action="/sincronizacao/agora">
+      <form method="post" action="/sincronizacao/agora" data-carregando="Lendo o Drive…">
         <button class="botao" type="submit"{% if running %} disabled aria-disabled="true"{% endif %}>
           {% if running %}Sincronizando…{% else %}Sincronizar agora{% endif %}
         </button>

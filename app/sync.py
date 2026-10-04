@@ -259,6 +259,13 @@ class _Sync:
         )
         if existing is None:
             self.counts["new"] += 1
+        else:
+            if existing["name"] != name:
+                self._event(file_id, "renomeado", f"{existing['name']} → {name}")
+            elif existing["parent_id"] != (item.get("parents") or [None])[0]:
+                self._event(file_id, "movido", f"{existing['path']} → {path}")
+            if existing["sync_status"] == "unavailable":
+                self._event(file_id, "voltou", None)
 
         if kind is None:
             self._set_status(file_id, "ignored", ignore_reason)
@@ -281,6 +288,8 @@ class _Sync:
             extracted = extract(kind, data)
         except (DriveError, ReadError) as exc:
             reason = _drive_error_message(exc) if isinstance(exc, DriveError) else str(exc)
+            if existing is None or existing["sync_status"] != "failed":  # só a passagem para "falhou", não cada nova tentativa
+                self._event(file_id, "falhou", reason)
             self._set_status(file_id, "failed", reason)
             self.conn.execute("UPDATE sources SET last_error_at=? WHERE file_id=?", (now, file_id))
             self.counts["failed"] += 1
@@ -329,11 +338,18 @@ class _Sync:
                 continue
             reason = _missing_reason(client, row["file_id"], self.folder_id)
             self._set_status(row["file_id"], "unavailable", reason)
+            self._event(row["file_id"], "indisponivel", reason)
             self.counts["unavailable"] += 1
 
     def _set_status(self, file_id: str, status: str, reason: str | None) -> None:
         self.conn.execute(
             "UPDATE sources SET sync_status=?, status_reason=? WHERE file_id=?", (status, reason, file_id)
+        )
+
+    def _event(self, file_id: str, kind: str, detail: str | None) -> None:
+        """Linha do tempo de "Novidades dos documentos" (renomeado, movido, indisponível, voltou, falhou)."""
+        self.conn.execute(
+            "INSERT INTO source_events (file_id, ts, kind, detail) VALUES (?,?,?,?)", (file_id, db.utcnow(), kind, detail)
         )
 
 

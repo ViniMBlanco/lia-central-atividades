@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selo_estado, prazo, selo_revisao, titulo_sugestao, gerador %}
+{% block title %}Novidades dos documentos{% endblock %}
+{% macro desde(period) -%}
+  {%- if period.since %}desde {{ period.since | dt }}{% else %}desde o início{% endif -%}
+{%- endmacro %}
+{% macro fonte(name, url, status=None) -%}
+  {%- if url %}<a href="{{ url }}" target="_blank" rel="noopener">{{ name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ name }}{% endif -%}
+  {%- if status == "unavailable" %} <span class="discreto">(indisponível no Drive)</span>{% endif -%}
+{%- endmacro %}
+{% block content %}
+<h1>Novidades dos documentos</h1>
+<p class="intro">O que mudou nas atividades e nos documentos da pasta do Drive. <strong>Confirmado</strong> é o que já está no
+  registro oficial, com autor e fonte; <strong>proposto</strong> ainda depende de revisão humana e não vale.</p>
+
+<form class="ordenar" method="get" action="/novidades">
+  <label for="desde">Período</label>
+  <select id="desde" name="desde">
+    {% for k, v in PERIODS.items() %}
+    {% if k != "marca" or period.last_visit %}
+    <option value="{{ k }}"{% if period.key == k %} selected{% endif %}>{{ v }}{% if k == "marca" %} ({{ period.last_visit | dt }}){% endif %}</option>
+    {% endif %}
+    {% endfor %}
+  </select>
+  <button class="botao botao-secundario" type="submit">Mostrar</button>
+</form>
+
+<section id="para-mim" class="cartao para-mim" aria-labelledby="t-para-mim">
+  {% if not me %}
+  <h2 id="t-para-mim">O que mudou para você</h2>
+  <p>Escolha quem você é para ver o resumo pessoal: mudanças confirmadas nas suas atividades, propostas que as afetam,
+    dados incertos e prazos próximos.</p>
+  <form class="acoes" method="post" action="/usuario">
+    <input type="hidden" name="next" value="/novidades#para-mim">
+    {% for m in members %}
+    <button class="botao botao-secundario" type="submit" name="member_id" value="{{ m.member_id }}">{{ m.display_name }} · {{ m.front }}</button>
+    {% endfor %}
+  </form>
+  {% else %}
+  <div class="titulo-com-acao">
+    <h2 id="t-para-mim">O que mudou para {{ me.display_name }}</h2>
+    <form method="post" action="/novidades/visto">
+      <button class="botao botao-secundario" type="submit">Marcar como visto</button>
+    </form>
+  </div>
+  <p class="discreto">{{ period.label }}{% if period.since %} ({{ period.since | dt }}){% endif %}.
+    {% if period.last_visit %}Última visita marcada por {{ me.display_name }}: {{ period.last_visit | dt }}.
+    {% else %}{{ me.display_name }} ainda não marcou nenhuma visita; “Marcar como visto” faz a próxima visita mostrar só o que vier depois.{% endif %}
+    Abrir ou recarregar esta página não marca nada.</p>
+
+  {% set c = mine.confirmed | length %}
+  <p class="manchete"><strong>{{ headline[0] }}</strong> {{ headline[1:] | join(" ") }}</p>
+
+  <div id="resumo-ia" class="resumo-ia">
+    {% if summary and summary.status == "ok" %}
+    <p class="rotulo">Resumo escrito pela IA <span class="discreto">({{ gerador(summary.generated_by) }}, {{ summary.created_at | dt }})</span></p>
+    <p class="paragrafo-ia">{{ summary.text }}</p>
+    <p class="discreto">Escrito só a partir dos itens abaixo e conferido automaticamente: as datas, atividades e pessoas citadas
+      estão nos itens, e o que é proposta aparece como proposta. Na dúvida, valem os itens e os links.</p>
+    {% elif summary and summary.status == "descartado" %}
+    <div class="aviso aviso-alerta" role="status"><strong>O parágrafo escrito pela IA foi descartado</strong> na conferência automática:
+      {{ summary_notes | join("; ") }}. A lista abaixo continua completa.
+      <details><summary>Ver o texto descartado (não use como informação)</summary><p>{{ summary.text }}</p></details>
+    </div>
+    {% elif summary and summary.status == "falhou" %}
+    <div class="aviso aviso-erro" role="alert"><strong>A IA não escreveu o resumo:</strong> {{ summary_notes | join(" ") }}
+      A lista abaixo continua completa.</div>
+    {% endif %}
+    {% if can_summarize and not (summary and summary.status != "falhou") %}
+    <form class="acoes" method="post" action="/novidades/resumo-ia" data-carregando="Escrevendo o resumo…">
+      <input type="hidden" name="desde" value="{{ period.key }}">
+      <button class="botao botao-secundario" type="submit">{% if summary %}Tentar de novo{% else %}Resumir com IA{% endif %}</button>
+      <span class="dica">Um parágrafo escrito pela IA a partir dos itens abaixo (pode levar até 30 segundos). Os itens não mudam.</span>
+    </form>
+    {% endif %}
+  </div>
+
+  <h3 id="confirmado">Confirmado no registro oficial ({{ c }})</h3>
+  {% if mine.confirmed %}
+  <ul class="lista-mudancas">
+    {% for ev in mine.confirmed %}
+    <li>
+      <p><span class="selo selo-ok"><span class="selo-icone" aria-hidden="true">✓</span>Confirmado</span>
+        <a class="titulo-atividade" href="/atividades/{{ ev.activity_id }}">{{ ev.title }}</a> <code>{{ ev.activity_id }}</code></p>
+      <p class="discreto">{{ ev.label }} por {% if ev.by_me %}você ({{ ev.actor_name }}){% else %}{{ ev.actor_name or ev.actor_id }}{% endif %} em {{ ev.ts | dt }}
+        {%- if ev.source_name %} · fonte: {{ fonte(ev.source_name, ev.source_url, ev.source_status) }}{% else %} · edição na aplicação{% endif %}
+        {%- if ev.suggestion_id %} · <a href="/sugestoes/{{ ev.suggestion_id }}">sugestão #{{ ev.suggestion_id }}</a>{% endif %}</p>
+      {% if ev.became_owner %}<p><strong>{{ me.display_name }} passou a ser responsável.</strong></p>{% endif %}
+      {% if ev.left_owner %}<p><strong>{{ me.display_name }} deixou de ser responsável.</strong></p>{% endif %}
+      <ul class="mudancas">
+        {% for f, antes, depois in ev.fields %}
+        <li><strong>{{ FIELD_LABELS[f] }}:</strong>
+          {% if ev.action != "create" %}<del>{{ antes | campo(f, member_names) }}</del> <span aria-hidden="true">→</span><span class="sr"> passou a ser </span>{% endif %}
+          <ins>{{ depois | campo(f, member_names) }}</ins></li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="vazio">Nenhuma mudança confirmada nas atividades de {{ me.display_name }} {{ desde(period) }}.</p>
+  {% endif %}
+  {% if mine.imported %}
+  <p class="discreto">Carga inicial: {{ mine.imported | length }} atividade(s) de {{ me.display_name }} foram importadas de
+    {{ fonte(mine.imported[0].source_name, mine.imported[0].source_url) }} em {{ mine.imported[0].ts | dt }}
+    ({% for ev in mine.imported %}<a href="/atividades/{{ ev.activity_id }}">{{ ev.activity_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}).</p>
+  {% endif %}
+
+  <h3 id="propostas">Propostas aguardando revisão ({{ mine.pending | length }})</h3>
+  {% if mine.pending %}
+  <p class="discreto">Ainda não valem: as atividades continuam com os valores atuais até uma pessoa revisora aceitar.</p>
+  <ul class="lista-mudancas">
+    {% for s in mine.pending %}
+    <li>
+      <p>{{ selo_revisao("pendente") }}{% if s.is_new %} <span class="selo selo-info">Nova</span>{% endif %}
+        <a class="titulo-atividade" href="/sugestoes/{{ s.suggestion_id }}">{{ titulo_sugestao(s) }}</a> <span class="discreto">#{{ s.suggestion_id }}</span></p>
+      <ul class="mudancas">
+        {% for f, v in s.proposed_fields.items() %}
+        <li><strong>{{ FIELD_LABELS[f] }}:</strong>
+          {% if s.kind == "update" %}<span>{{ s.base_fields.get(f) | campo(f, member_names) }}</span> <span aria-hidden="true">→</span><span class="sr"> passaria a ser </span>{% endif %}
+          <span class="proposto">{{ v | campo(f, member_names) }}</span> <span class="discreto">(proposto)</span></li>
+        {% endfor %}
+      </ul>
+      <p class="discreto">Fonte: {{ fonte(s.source_name, s.source_url, s.source_status) }}{% if s.doc_date %} · documento de {{ s.doc_date | data }}{% endif %}
+        · aguarda revisão de {{ s.reviewers | join(" ou ") if s.reviewers else "ninguém com permissão (frente a confirmar)" }}
+        {%- if s.i_can_review %} · <a href="/sugestoes/{{ s.suggestion_id }}">você pode revisar</a> (a proposta envolve você: a revisão fica registrada como auto-revisão){% endif %}</p>
+      {% if s.evidence %}<blockquote class="evidencia">“{{ s.evidence[0].quote | md_inline }}”</blockquote>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="vazio">Nenhuma proposta pendente sobre atividades de {{ me.display_name }}.</p>
+  {% endif %}
+  {% if mine.closed %}
+  <p class="discreto">Revisadas sem mudança {{ desde(period) }}:</p>
+  <ul>
+    {% for s in mine.closed %}
+    <li><a href="/sugestoes/{{ s.suggestion_id }}">Proposta #{{ s.suggestion_id }}</a> ({{ titulo_sugestao(s) }}) rejeitada por
+      {{ s.reviewer_name }} em {{ s.reviewed_at | dt }}: “{{ s.review_reason }}”. Nada mudou.</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if mine.to_review %}
+  <h3 id="revisar">Aguardando a sua revisão ({{ mine.to_review | length }})</h3>
+  <ul>
+    {% for s in mine.to_review %}
+    <li><a href="/sugestoes/{{ s.suggestion_id }}">{{ titulo_sugestao(s) }}</a> <span class="discreto">#{{ s.suggestion_id }} · {{ s.source_name }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3 id="incertos">Dados incertos ou em conflito ({{ mine.uncertain | length }})</h3>
+  {% if mine.uncertain %}
+  <ul class="lista-incertos">
+    {% for u in mine.uncertain %}<li><span class="selo selo-neutro"><span class="selo-icone" aria-hidden="true">~</span>Incerto</span>
+      {% if u.href %}<a href="{{ u.href }}">{{ u.text }}</a>{% else %}{{ u.text }}{% endif %}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="vazio">Nenhum dado incerto nem conflito ligado às atividades de {{ me.display_name }}.</p>
+  {% endif %}
+
+  <h3 id="atencao">Prazos próximos e bloqueios ({{ mine.attention | length }})</h3>
+  {% if mine.attention %}
+  <ul class="lista-mudancas">
+    {% for a in mine.attention %}
+    <li><a class="titulo-atividade" href="/atividades/{{ a.activity_id }}">{{ a.title }}</a> <code>{{ a.activity_id }}</code>
+      <div>{{ prazo(a) }} {{ selo_estado(a.status) }}{% if a.status == "bloqueada" and a.notes %} <span class="discreto">{{ a.notes }}</span>{% endif %}</div></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="vazio">Nenhuma atividade de {{ me.display_name }} vence nos próximos 7 dias nem está bloqueada.</p>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section id="documentos" aria-labelledby="t-docs">
+  <h2 id="t-docs">Novidades nos documentos da pasta</h2>
+  <p class="discreto">{{ period.label }}{% if period.since %} ({{ period.since | dt }}){% endif %}: arquivos que entraram, mudaram,
+    foram renomeados ou saíram da pasta do Drive, e o que o app fez com eles. Mais recentes primeiro.</p>
+  {% for d in feed %}
+  {% set s = d.source %}
+  <article class="cartao doc-novidade" aria-labelledby="doc-{{ loop.index }}">
+    <h3 id="doc-{{ loop.index }}">{{ fonte(s.name, s.web_url) }}</h3>
+    <p class="linha-meta">
+      <span class="discreto">{{ KIND_LABELS.get(s.kind or "", s.kind) }}</span>
+      {% if s.sync_status != "ignored" %}<span class="selo selo-neutro">{{ AUTHORITY_LABELS[s.authority] }}</span>{% endif %}
+      {% set rotulo, tom = STATUS_LABELS[s.sync_status] %}
+      <span class="selo selo-{{ tom }}">{{ rotulo }}</span>
+    </p>
+    {% if s.sync_status in ("unavailable", "failed") %}<p class="discreto">{{ s.status_reason }}</p>{% endif %}
+    <ol class="linha-tempo">
+      {% for e in d.events %}
+      <li class="tom-{{ e.tone }}">
+        <p><time datetime="{{ e.ts }}">{{ e.ts | dt }}</time> <strong>{{ e.title }}</strong></p>
+        {% if e.detail %}<p class="discreto">{{ e.detail }}</p>{% endif %}
+        {% if e.links %}<p>{% for label, href in e.links %}<a href="{{ href }}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </article>
+  {% else %}
+  <p class="vazio">Nenhuma novidade nos documentos {{ desde(period) }}.{% if not health.state %} Nenhuma sincronização com o Drive foi feita ainda: veja o <a href="/sincronizacao">Estado da sincronização</a>.{% endif %}</p>
+  {% endfor %}
+</section>
+{% endblock %}

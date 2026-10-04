@@ -146,6 +146,10 @@ Na camada gratuita, o Google pode usar o conteúdo enviado para melhorar seus pr
 
 Trocar de modelo é só mudar `GEMINI_MODEL`; cada modelo tem cota gratuita própria.
 
+**Resumo pessoal ("O que mudou para mim", em Novidades dos documentos).** O resumo é montado **sem IA**, a partir dos registros: mudanças **confirmadas** nas atividades da pessoa (eventos do histórico, com antes → depois, autor, hora e documento de origem), **propostas** que a afetam e ainda aguardam revisão, dados **incertos ou em conflito** (prazo a definir, fonte indisponível, ponto a conferir numa proposta, conflito de fonte aberto, ata ainda sem análise, leitura do Drive com falha) e **prazos próximos e bloqueios**. Se nada mudou, a tela diz isso. O marco é a última vez que a pessoa clicou em **Marcar como visto** (ou um período escolhido: 24 h, 7 dias, desde o início); abrir ou recarregar a página não marca nada.
+
+Por cima da lista, o botão **Resumir com IA** pede ao Gemini um parágrafo de 2 a 4 frases escrito **só a partir dos itens da lista** (nenhum texto de documento além do que já está na tela). O app confere o parágrafo antes de mostrar e o **descarta inteiro** se ele citar uma data, um `ACT-*` ou uma pessoa que não estão nos itens, ou se escrever um valor que só existe numa proposta pendente sem dizer que é proposta (ex.: "o prazo passou para 07/10" antes do aceite). O parágrafo fica guardado por pessoa e conjunto de itens: pedir de novo com os mesmos itens não chama a IA; quando os itens mudam, o parágrafo antigo some. Medido em 04/10 (`gemini-3.6-flash`, raciocínio "baixo"): ~650 tokens de entrada, ~100 de saída, 1,5 a 4 s → cerca de **US$ 0,001 por resumo** na camada paga.
+
 ## 8. Limitações conhecidas
 
 *Em construção.*
@@ -156,12 +160,17 @@ Trocar de modelo é só mudar `GEMINI_MODEL`; cada modelo tem cota gratuita pró
 - A IA lê só atas. Ela pode errar quem é responsável quando a ata cita várias pessoas (ex.: quem aprova × quem executa); a validação garante só que o nome está escrito no trecho, e a decisão final é do revisor.
 - Sem chave de IA, as regras simples só reconhecem frases no formato do pacote de teste (ID `ACT-*`, data `AAAA-MM-DD`, "Próximo passo:").
 - A evidência é conferida como texto (ignorando marcação Markdown e espaços); um trecho parafraseado pelo modelo é descartado, mesmo que o sentido esteja certo.
+- **Comece aqui** reconhece os documentos de orientação pelo nome: o `INDEX`, o de estado atual ("estado" no nome) e o guia ("guia" no nome ou título "Comece aqui"). Propósito = primeiro parágrafo do estado atual; frentes = frases que começam pelo nome da frente e itens "Frente: …" do guia. Documentos com outra estrutura aparecem na lista de referência, mas o propósito ou as frentes ficam "a confirmar" — o app não escreve esses textos por conta própria.
+- A conferência do parágrafo da IA no resumo pessoal pega datas, IDs e nomes fora dos itens e propostas ditas como fato quando há data; uma frase que exagere sem citar data (ex.: "tudo foi aprovado") não é detectada. Por isso a lista com os links continua sendo a referência, logo abaixo do parágrafo.
+- "Marcar como visto" vale por pessoa de demonstração (não por navegador), porque não há login de verdade. Horários são gravados ao segundo: algo que acontece no mesmo segundo da marcação fica fora do "desde a última visita".
+- A linha do tempo de "Novidades dos documentos" registra renomeação, saída da pasta, volta e falha de leitura a partir da Fase 5; em bancos anteriores, a saída de um arquivo é reconstruída do histórico de sincronizações (e marcada como reconstruída).
 
 ## 9. Antes de usar dados reais
 
 *Em construção.*
 
 - **IA:** usar a camada paga do Gemini (ou outro provedor com contrato que não use os dados para treino) e revisar o que é enviado: hoje vai o texto inteiro da ata e a lista de atividades.
+- **Visibilidade por pessoa:** no protótipo, todas as pessoas veem todas as fontes lidas (uma conta do Google lê a pasta). Com dados reais, "Comece aqui", "Novidades" e o resumo pessoal (inclusive o parágrafo da IA) precisam mostrar só trechos de arquivos que a pessoa pode abrir no Drive — por exemplo, conferindo as permissões do arquivo para a conta da pessoa antes de exibir ou enviar o trecho à IA.
 
 ## 10. Ferramentas de IA usadas no desenvolvimento
 

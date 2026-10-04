@@ -28,8 +28,8 @@ MAX_BYTES = 10 * 1024 * 1024  # mesmo limite da exportação de Docs do Drive
 SUPPORTED_KINDS = ("markdown", "text", "xlsx", "gdoc", "gsheet")
 
 _IGNORED_BY_EXT = {
-    ".docx": "Documento do Word não é lido diretamente. Para processar, abra no Drive com "
-    "\"Documentos Google\" (o Google Doc gerado é lido).",
+    ".docx": "Documento do Word não é lido diretamente. Para processar, abra no Drive e use "
+    "\"Arquivo → Salvar como Documentos Google\" (o Google Doc gerado é lido).",
     ".doc": "Documento do Word não é lido diretamente. Converta para Google Docs.",
     ".pdf": "PDF ainda não processado nesta versão.",
     ".xls": "Planilha no formato antigo do Excel (.xls) não é lida; salve como .xlsx.",

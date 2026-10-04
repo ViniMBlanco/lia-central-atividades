@@ -265,13 +265,42 @@ CREATE TABLE IF NOT EXISTS sync_state (
     last_error      TEXT
 );
 
--- Marco do "o que mudou para mim".
+-- Mudanças de situação de um arquivo que não ficam nas versões (linha do tempo de
+-- "Novidades dos documentos"). Arquivo novo e conteúdo alterado vêm de sources/source_versions.
+CREATE TABLE IF NOT EXISTS source_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id  TEXT NOT NULL REFERENCES sources(file_id),
+    ts       TEXT NOT NULL,
+    kind     TEXT NOT NULL CHECK (kind IN ('renomeado', 'movido', 'indisponivel', 'voltou', 'falhou')),
+    detail   TEXT
+);
+
+-- Marco do "o que mudou para mim": gravado só quando a pessoa clica em "Marcar como visto"
+-- (abrir ou recarregar a página não grava nada).
 CREATE TABLE IF NOT EXISTS visits (
     member_id    TEXT PRIMARY KEY REFERENCES members(member_id),
     last_seen_at TEXT NOT NULL
 );
 
+-- Parágrafo do "o que mudou para mim" escrito pela IA, só a partir dos itens já listados.
+-- Cache por pessoa e conjunto de fatos: os mesmos fatos não geram outro pedido à IA.
+CREATE TABLE IF NOT EXISTS personal_summaries (
+    summary_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_id    TEXT NOT NULL REFERENCES members(member_id),
+    facts_hash   TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('ok', 'descartado', 'falhou')),
+    text         TEXT,                      -- parágrafo (também guardado quando descartado, para auditoria)
+    notes        TEXT NOT NULL DEFAULT '[]', -- JSON: motivos do descarte ou da falha
+    generated_by TEXT NOT NULL,
+    tokens_in    INTEGER,
+    tokens_out   INTEGER,
+    duration_ms  INTEGER,
+    created_at   TEXT NOT NULL,
+    UNIQUE (member_id, facts_hash)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sources_status ON sources(sync_status);
+CREATE INDEX IF NOT EXISTS idx_source_events_ts ON source_events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_activity ON activity_events(activity_id, ts);
 CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(review_status);
 CREATE INDEX IF NOT EXISTS idx_suggestions_target ON suggestions(target_activity_id, review_status);

@@ -17,7 +17,7 @@
   <strong>{{ waiting | length }} ata(s) ainda sem análise concluída</strong>
   ({{ waiting | map(attribute="name") | join(", ") }}). As sugestões delas podem estar faltando;
   os dados oficiais não mudaram. <a href="#analises">Ver o motivo</a>
-  <form class="acoes" method="post" action="/analises/tentar">
+  <form class="acoes" method="post" action="/analises/tentar" data-carregando="Analisando…">
     <button class="botao botao-secundario" type="submit"{% if running %} disabled aria-disabled="true"{% endif %}>Analisar agora</button>
   </form>
 </div>
@@ -91,7 +91,7 @@
           <div>{{ a.error }}</div>
           <div class="discreto">{{ a.attempts }} tentativa(s). Nada foi concluído a partir deste documento.</div>
           {% if a.is_current %}
-          <form method="post" action="/analises/tentar">
+          <form method="post" action="/analises/tentar" data-carregando="Analisando…">
             <input type="hidden" name="file_id" value="{{ a.file_id }}">
             <button class="botao botao-secundario" type="submit"{% if running %} disabled aria-disabled="true"{% endif %}>Tentar de novo</button>
           </form>

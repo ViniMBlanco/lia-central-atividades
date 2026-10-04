@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selo_estado, prazo, responsaveis, fonte_oficial %}
+{% block title %}Comece aqui{% endblock %}
+{% macro citado(q) -%}
+  <span class="fonte-citacao">— {% if q.doc.source.web_url %}<a href="{{ q.doc.source.web_url }}" target="_blank" rel="noopener">{{ q.doc.source.name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>{% else %}{{ q.doc.source.name }}{% endif %}
+  {%- if q.doc.source.sync_status == "unavailable" %} <span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>indisponível no Drive: último conteúdo lido</span>{% endif %}</span>
+{%- endmacro %}
+{% block content %}
+<h1>Comece aqui</h1>
+<p class="intro">Guia rápido para quem chega à Liga, montado a partir dos documentos de orientação da pasta do Drive.
+  Os trechos citados são copiados dos documentos, com link para o original; o que ainda não foi confirmado aparece marcado como tal.</p>
+
+<section class="cartao para-voce" aria-labelledby="t-voce">
+  {% if not me %}
+  <h2 id="t-voce">Quem é você?</h2>
+  <p>Escolha o seu nome para ver a sua primeira ação e as suas atividades. Não há senha: é uma troca de usuário de
+    demonstração, e trocar não muda nenhum dado.</p>
+  <form class="acoes" method="post" action="/usuario">
+    <input type="hidden" name="next" value="/">
+    {% for m in members %}
+    <button class="botao botao-secundario" type="submit" name="member_id" value="{{ m.member_id }}">{{ m.display_name }} · {{ m.front }}</button>
+    {% endfor %}
+  </form>
+  {% else %}
+  <h2 id="t-voce">Para {{ me.display_name }} <span class="discreto">· {{ me.front }}</span></h2>
+  {% set a = action.activity %}
+  {% if a %}
+  <p class="rotulo">Sua primeira ação <span class="discreto">(a atividade aberta de prazo mais próximo)</span></p>
+  <p class="primeira-acao"><a class="titulo-atividade" href="/atividades/{{ a.activity_id }}">{{ a.title }}</a> <code>{{ a.activity_id }}</code></p>
+  <dl class="pares pares-compactos">
+    <dt>Próximo passo</dt><dd>{% if a.next_step %}{{ a.next_step }}{% else %}<span class="a-confirmar">Não registrado</span>{% endif %}</dd>
+    <dt>Prazo</dt><dd>{{ prazo(a) }}</dd>
+    <dt>Estado</dt><dd>{{ selo_estado(a.status) }}{% if a.status == "bloqueada" and a.notes %} <span class="discreto">{{ a.notes }}</span>{% endif %}</dd>
+    <dt>Responsáveis</dt><dd>{{ responsaveis(a) }}</dd>
+  </dl>
+  {% if a.pending %}
+  <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">?</span>Mudança proposta aguardando revisão</span>
+    os valores acima continuam oficiais até a revisão. <a href="/atividades/{{ a.activity_id }}">Ver a proposta</a></p>
+  {% endif %}
+  {% elif action.to_review %}
+  <p class="rotulo">Sua primeira ação</p>
+  <p>Nenhuma atividade aberta com {{ me.display_name }} como responsável. Como revisor(a), há
+    <strong>{{ action.to_review }} sugestão(ões)</strong> esperando você: <a href="/sugestoes">abrir Sugestões para revisar</a>.</p>
+  {% else %}
+  <p class="vazio">Nenhuma atividade aberta com {{ me.display_name }} como responsável no registro.
+    {% if action.unowned_in_front %}Na frente {{ me.front }} há {{ action.unowned_in_front | length }} atividade(s) com responsável a confirmar:
+    {% for u in action.unowned_in_front %}<a href="/atividades/{{ u.activity_id }}">{{ u.activity_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+    {% endif %}Veja <a href="/atividades">Todas as atividades</a>.</p>
+  {% endif %}
+
+  <ul class="contagens resumo" aria-label="Resumo de {{ me.display_name }}">
+    <li><a href="/minhas"><strong>{{ action.open | length }}</strong> atividade(s) aberta(s)</a></li>
+    {% if news.attention %}<li><a href="/novidades#atencao"><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>{{ news.attention }} com prazo em até 7 dias ou bloqueada(s)</span></a></li>{% endif %}
+    <li><a href="/novidades#para-mim"><strong>{{ news.confirmed }}</strong> mudança(s) confirmada(s)</a> <span class="discreto">({{ news.period.label | lower }})</span></li>
+    {% if news.pending %}<li><a href="/novidades#propostas"><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">?</span>{{ news.pending }} proposta(s) sobre suas atividades aguardando revisão</span></a></li>{% endif %}
+    {% if news.uncertain %}<li><a href="/novidades#incertos"><span class="selo selo-neutro"><span class="selo-icone" aria-hidden="true">~</span>{{ news.uncertain }} dado(s) incerto(s) ou em conflito</span></a></li>{% endif %}
+    {% if action.to_review %}<li><a href="/sugestoes"><strong>{{ action.to_review }}</strong> sugestão(ões) para você revisar</a></li>{% endif %}
+  </ul>
+  {% endif %}
+</section>
+
+<section aria-labelledby="t-passos">
+  <h2 id="t-passos">Em quatro passos</h2>
+  <ol class="passos">
+    <li><strong>Entenda a Liga:</strong> <a href="#proposito">propósito</a>, <a href="#frentes">frentes</a> e
+      <a href="#regras">regras de trabalho</a>, logo abaixo, com os <a href="#documentos">documentos de referência</a>.</li>
+    <li><strong>Ache suas tarefas</strong> em <a href="/minhas">Minhas atividades</a> (escolha quem você é no topo da página).
+      Dono e prazo de qualquer tarefa estão em <a href="/atividades">Todas as atividades</a>.</li>
+    <li><strong>Confira a fonte antes de agir:</strong> cada atividade mostra de que documento veio e o histórico de mudanças.
+      O que uma ata nova propõe só vale depois que uma pessoa revisora aceita.</li>
+    <li><strong>Acompanhe o que mudou</strong> em <a href="/novidades">Novidades dos documentos</a>: o que mudou para você e o que entrou no Drive.</li>
+  </ol>
+</section>
+
+{% if not page.has_sources %}
+<p class="vazio">Nenhum documento foi lido do Drive ainda, então propósito, frentes e regras não podem ser mostrados.
+  Conecte a pasta em <a href="/sincronizacao">Estado da sincronização</a>.</p>
+{% else %}
+
+<section id="proposito" class="cartao" aria-labelledby="t-proposito">
+  <h2 id="t-proposito">Propósito</h2>
+  {% if page.purpose %}
+  {% if page.purpose_provisional %}
+  <p><span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Provisório: a confirmar</span>
+    {% if page.state.meta.responsavel_por_confirmar %}<span class="discreto">Confirmação com {{ page.state.meta.responsavel_por_confirmar }}.</span>{% endif %}</p>
+  {% endif %}
+  <blockquote class="citacao">
+    <p>{{ page.purpose.text | md_inline(page.links) }}</p>
+    <footer>{{ citado(page.purpose) }}{% if page.state.status %} · status: {{ page.state.status }}{% endif %}{% if page.state.meta.atualizado_em %} · atualizado em {{ page.state.meta.atualizado_em | data }}{% endif %}</footer>
+  </blockquote>
+  {% else %}
+  <p class="vazio">Nenhum documento de estado atual descreve o propósito da Liga. O app não escreve um propósito por conta própria.</p>
+  {% endif %}
+</section>
+
+<section id="frentes" aria-labelledby="t-frentes">
+  <h2 id="t-frentes">Frentes</h2>
+  {% if page.fronts %}
+  <table class="tabela tabela-responsiva">
+    <caption class="sr">Frentes, o que fazem, pessoas e atividades abertas</caption>
+    <thead><tr><th scope="col">Frente</th><th scope="col">O que faz</th><th scope="col">Pessoas e papéis</th><th scope="col">Atividades abertas</th></tr></thead>
+    <tbody>
+      {% for f in page.fronts %}
+      <tr>
+        <th scope="row" data-rotulo="Frente">{{ f.name }}</th>
+        <td data-rotulo="O que faz">
+          {% for q in f.what %}<p class="citacao-curta">“{{ q.text | md_inline(page.links) }}” {{ citado(q) }}</p>
+          {% else %}<span class="a-confirmar">A confirmar: nenhum documento descreve</span>{% endfor %}
+        </td>
+        <td data-rotulo="Pessoas e papéis">
+          {% for q in f.who %}<p class="citacao-curta">“{{ q.text | md_inline(page.links) }}” {{ citado(q) }}</p>
+          {% else %}{% if f.members %}{{ f.members | join(", ") }} <span class="discreto">(cadastro de pessoas do app; papéis não descritos nos documentos)</span>{% else %}<span class="a-confirmar">A confirmar</span>{% endif %}{% endfor %}
+        </td>
+        <td data-rotulo="Atividades abertas"><a href="/atividades?frente={{ f.name | urlencode }}&amp;estado=abertas">{{ f.open_count }} aberta(s)</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="vazio">Nenhuma frente encontrada nos documentos nem no cadastro de pessoas.</p>
+  {% endif %}
+</section>
+
+<section id="regras" class="cartao" aria-labelledby="t-regras">
+  <h2 id="t-regras">Regras de trabalho</h2>
+  {% if page.steps %}
+  <h3>Para quem chega, segundo o guia</h3>
+  <ol class="lista-citacoes">
+    {% for q in page.steps %}<li>“{{ q.text | md_inline(page.links) }}”{% if loop.last %} {{ citado(q) }}{% endif %}</li>{% endfor %}
+  </ol>
+  {% endif %}
+  {% if page.rules %}
+  <h3>O que vale e o que não vale</h3>
+  <ul class="lista-citacoes">
+    {% for q in page.rules %}<li>“{{ q.text | md_inline(page.links) }}” {{ citado(q) }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <h3>Como este app aplica essas regras</h3>
+  <ul>
+    <li>Depois da importação da planilha apontada pelo INDEX, o registro oficial das atividades é este app: mudanças entram pela interface, com autor no histórico.</li>
+    <li>Mudança vinda de um documento (ata nova, planilha editada) vira <a href="/sugestoes">sugestão</a> e só vale depois que uma pessoa revisora aceita.
+      {% if page.reviewers %}Quem revisa: {% for name, scope in page.reviewers %}{{ name }} ({{ scope }}){% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</li>
+    <li>Nada é completado por inferência: responsável ou prazo que nenhum documento registra aparece como “a confirmar” ou “a definir”.</li>
+  </ul>
+</section>
+
+<section id="documentos" aria-labelledby="t-documentos">
+  <h2 id="t-documentos">Documentos de referência</h2>
+  <ul class="lista-docs">
+    {% for d in page.documents %}
+    {% set s = d.source %}
+    <li class="cartao">
+      <p class="doc-cabeca">
+        {% if s and s.web_url %}<a class="titulo-atividade" href="{{ s.web_url }}" target="_blank" rel="noopener">{{ s.name }}<span class="sr"> (abre no Google Drive em nova aba)</span></a>
+        {% else %}<span class="titulo-atividade">{{ s.name if s else d.name }}</span>{% endif %}
+        {% if s %}
+        {% set tom = {"activity_register": "info", "direction": "ok", "deprecated": "neutro"}.get(s.authority, "neutro") %}
+        <span class="selo selo-{{ tom }}">{{ AUTHORITY_LABELS[s.authority] }}</span>
+        {% if s.sync_status == "unavailable" %}<span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Indisponível no Drive</span>{% endif %}
+        {% if d.doc and d.doc.partial and s.authority != "deprecated" %}<span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Parcial (status: {{ d.doc.status }})</span>{% endif %}
+        {% else %}
+        <span class="selo selo-alerta"><span class="selo-icone" aria-hidden="true">!</span>Não está na pasta</span>
+        {% endif %}
+      </p>
+      {% if d.description %}<p>“{{ d.description | md_inline(page.links) }}” <span class="discreto">— descrição no {{ page.index.source.name }}</span></p>
+      {% elif s and s.authority_reason %}<p class="discreto">{{ s.authority_reason }}</p>{% endif %}
+      {% if d.doc and d.doc.meta %}
+      <p class="discreto">{% for k, v in d.doc.meta.items() %}{{ k | replace("_", " ") }}: {{ v | data }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+{{ fonte_oficial(register) }}
+
+<section id="a-confirmar" class="cartao" aria-labelledby="t-confirmar">
+  <h2 id="t-confirmar">O que ainda está a confirmar</h2>
+  {% if page.gaps %}
+  <ul>
+    {% for g in page.gaps %}<li>{% if g.href %}<a href="{{ g.href }}">{{ g.text }}</a>{% else %}{{ g.text }}{% endif %}</li>{% endfor %}
+  </ul>
+  <p class="discreto">Lacunas encontradas nos documentos e no registro. O app não as completa por conta própria.</p>
+  {% else %}
+  <p>Nenhuma lacuna encontrada nos documentos de orientação lidos.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
